@@ -1,0 +1,19 @@
+{
+  "name": "zhouji-api",
+  "version": "2.2.0",
+  "description": "周迹 - 拖延症干预系统后端 API v2.2 (安全增强版)",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test-suite.js",
+    "db:create": "wrangler d1 create zhouji-db",
+    "db:migrate": "wrangler d1 execute zhouji-db --file=./schema.sql",
+    "db:migrate:local": "wrangler d1 execute zhouji-db --local --file=./schema.sql",
+    "db:backup": "wrangler d1 backup create zhouji-db"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

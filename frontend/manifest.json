@@ -1,0 +1,13 @@
+{
+  "name": "周迹 - 拖延症干预系统",
+  "short_name": "周迹",
+  "description": "不是管理时间，是管理启动",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#4F46E5",
+  "icons": [
+    { "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%234F46E5' width='192' height='192' rx='40'/%3E%3Ctext x='96' y='125' font-size='100' text-anchor='middle' fill='white' font-family='serif'%3E周%3C/text%3E%3C/svg%3E", "sizes": "192x192", "type": "image/svg+xml" },
+    { "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%234F46E5' width='512' height='512' rx='100'/%3E%3Ctext x='256' y='340' font-size='280' text-anchor='middle' fill='white' font-family='serif'%3E周%3C/text%3E%3C/svg%3E", "sizes": "512x512", "type": "image/svg+xml" }
+  ]
+}

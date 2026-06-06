@@ -1,0 +1,13 @@
+name = "zhouji-api"
+main = "index.js"
+compatibility_date = "2026-06-06"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zhouji-db"
+database_id = "YOUR_DATABASE_ID_HERE"
+
+[vars]
+NODE_ENV = "production"
+JWT_SECRET = "YOUR_JWT_SECRET_AT_LEAST_32_CHARS"

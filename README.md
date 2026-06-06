@@ -99,22 +99,29 @@ database_name = "zhouji-db"
 database_id = "你的数据库ID"   # ← 替换这里
 ```
 
-同时将 `JWT_SECRET` 改为你自己的密钥（至少32位随机字符串）：
+**4. 设置 JWT 密钥（重要！）**
 
-```toml
-[vars]
-JWT_SECRET = "你自己的随机密钥字符串-至少32位"
+```bash
+wrangler secret put JWT_SECRET
 ```
 
-> ⚠️ **安全提示**：生产环境建议使用 `wrangler secret put JWT_SECRET` 代替明文写在 toml 中。
+输入一个随机长字符串（至少32位），例如：
+```
+zhouji-secret-key-2026-random-string-here
+```
 
-**4. 初始化数据库**
+> ⚠️ **重要提示**：
+> - JWT_SECRET 一旦设置后**不要随意更改**，否则所有已登录用户都会收到"登录已过期"错误
+> - 每次重新部署时，确保使用相同的 JWT_SECRET
+> - 可以使用 `wrangler secret list` 查看已设置的密钥
+
+**5. 初始化数据库**
 
 ```bash
 wrangler d1 execute zhouji-db --file=./schema.sql
 ```
 
-**5. 部署后端**
+**6. 部署后端**
 
 ```bash
 wrangler deploy

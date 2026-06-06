@@ -10,4 +10,6 @@ database_id = "YOUR_DATABASE_ID_HERE"
 
 [vars]
 NODE_ENV = "production"
-JWT_SECRET = "YOUR_JWT_SECRET_AT_LEAST_32_CHARS"
+# JWT_SECRET 请使用 wrangler secret put JWT_SECRET 设置，不要明文写在 toml 中
+# 首次部署执行: wrangler secret put JWT_SECRET
+# 输入一个至少32位的随机字符串作为密钥

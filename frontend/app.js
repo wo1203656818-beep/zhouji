@@ -127,11 +127,15 @@ const api = {
         }
 
         if (res.status === 401) {
-          safeStorage.remove('token');
-          safeStorage.remove('userId');
-          safeStorage.remove('username');
-          showToast('登录已过期，请重新登录', 'error');
-          setTimeout(function() { navigate('login'); }, 1500);
+          // 修复: 登录/注册接口的401不清除token(此时token可能刚保存或不存在)
+          var isAuthEndpoint = endpoint.includes('/api/auth/');
+          if (!isAuthEndpoint) {
+            safeStorage.remove('token');
+            safeStorage.remove('userId');
+            safeStorage.remove('username');
+            showToast('登录已过期，请重新登录', 'error');
+            setTimeout(function() { navigate('login'); }, 1500);
+          }
           throw new Error('认证已过期');
         }
 

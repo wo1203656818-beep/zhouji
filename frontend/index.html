@@ -237,15 +237,18 @@ const api = {
         }
 
         if (res.status === 401) {
-          // 修复: 登录/注册接口的401不清除token(此时token可能刚保存或不存在)
+          var data = await res.json();
           var isAuthEndpoint = endpoint.includes('/api/auth/');
-          if (!isAuthEndpoint) {
-            safeStorage.remove('token');
-            safeStorage.remove('userId');
-            safeStorage.remove('username');
-            showToast('登录已过期，请重新登录', 'error');
-            setTimeout(function() { navigate('login'); }, 1500);
+          if (isAuthEndpoint) {
+            // 登录/注册接口的401是用户名或密码错误，显示后端返回的实际错误
+            throw new Error(data.error || data.message || '用户名或密码错误');
           }
+          // 其他接口的401才是token过期
+          safeStorage.remove('token');
+          safeStorage.remove('userId');
+          safeStorage.remove('username');
+          showToast('登录已过期，请重新登录', 'error');
+          setTimeout(function() { navigate('login'); }, 1500);
           throw new Error('认证已过期');
         }
 

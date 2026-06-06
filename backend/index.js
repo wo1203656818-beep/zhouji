@@ -51,8 +51,9 @@ async function signJWT(payload, secret) {
     'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
   );
   const signature = await crypto.subtle.sign('HMAC', key, data);
-  const base64Data = btoa(String.fromCharCode(...new Uint8Array(data)));
-  const base64Sig = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  // 修复: 使用 ArrayBuffer 转 base64，正确处理 UTF-8 多字节字符
+  const base64Data = arrayBufferToBase64(data);
+  const base64Sig = arrayBufferToBase64(signature);
   return `${base64Data}.${base64Sig}`;
 }
 
@@ -60,15 +61,35 @@ async function verifyJWT(token, secret) {
   try {
     const [dataB64, sigB64] = token.split('.');
     if (!dataB64 || !sigB64) return null;
-    const data = new TextEncoder().encode(atob(dataB64));
-    const signature = new Uint8Array(atob(sigB64).split('').map(c => c.charCodeAt(0)));
+    // 修复: base64 直接转 Uint8Array，不再经过 TextEncoder
+    const data = base64ToArrayBuffer(dataB64);
+    const signature = base64ToArrayBuffer(sigB64);
     const key = await crypto.subtle.importKey(
       'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
     );
     const valid = await crypto.subtle.verify('HMAC', key, signature, data);
     if (!valid) return null;
-    return JSON.parse(atob(dataB64));
+    return JSON.parse(new TextDecoder().decode(data));
   } catch (e) { return null; }
+}
+
+// ArrayBuffer 和 Base64 互转工具函数
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 async function hashPassword(password) {
@@ -1145,16 +1166,17 @@ export default {
     const origin = request.headers.get('Origin') || '*';
     const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
 
+    // 修复: OPTIONS 预检请求必须最先处理，且包含 CORS 头
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin, env) });
+    }
+
     // 修复 BE-005: 验证关键环境变量
     if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) {
       return jsonResponse({ 
         error: '服务器配置错误: JWT_SECRET 未设置或太短',
         success: false 
-      }, 500);
-    }
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(origin, env) });
+      }, 500, corsHeaders(origin, env));
     }
 
     // 请求限流检查 (认证接口更严格)

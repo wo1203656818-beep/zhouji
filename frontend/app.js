@@ -49,8 +49,22 @@ const safeStorage = {
 };
 
 // 修复 Bug1: API_BASE 改为动态读取函数，保存后立即生效
+// 优先级：localStorage > 部署配置 > 空字符串
 function getApiBase() {
-  return safeStorage.get('api_base') || '';
+  // 1. 优先使用用户手动配置（localStorage）
+  const saved = safeStorage.get('api_base');
+  if (saved) return saved;
+  
+  // 2. 使用部署时配置的值
+  if (window.__DEPLOY_CONFIG__ && window.__DEPLOY_CONFIG__.API_BASE_URL) {
+    const deployUrl = window.__DEPLOY_CONFIG__.API_BASE_URL;
+    // 自动保存到 localStorage，下次直接使用
+    safeStorage.set('api_base', deployUrl);
+    return deployUrl;
+  }
+  
+  // 3. 返回空，需要在登录页手动配置
+  return '';
 }
 // 兼容旧代码的常量引用（指向函数调用结果，但关键路径使用 getApiBase()）
 const API_BASE = getApiBase();

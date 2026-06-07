@@ -13,6 +13,13 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%234F46E5' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='serif'%3E周%3C/text%3E%3C/svg%3E">
   <title>周迹 - 不是管理时间，是管理启动</title>
+  
+  <!-- 部署配置：修改此处的 API_BASE_URL 为你的后端地址 -->
+  <script>
+    window.__DEPLOY_CONFIG__ = {
+      API_BASE_URL: 'https://zhouji-api.wo1203656818.workers.dev' // 部署时填写：https://your-api.workers.dev
+    };
+  </script>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -159,8 +166,22 @@ const safeStorage = {
 };
 
 // 修复 Bug1: API_BASE 改为动态读取函数，保存后立即生效
+// 优先级：localStorage > 部署配置 > 空字符串
 function getApiBase() {
-  return safeStorage.get('api_base') || '';
+  // 1. 优先使用用户手动配置（localStorage）
+  const saved = safeStorage.get('api_base');
+  if (saved) return saved;
+  
+  // 2. 使用部署时配置的值
+  if (window.__DEPLOY_CONFIG__ && window.__DEPLOY_CONFIG__.API_BASE_URL) {
+    const deployUrl = window.__DEPLOY_CONFIG__.API_BASE_URL;
+    // 自动保存到 localStorage，下次直接使用
+    safeStorage.set('api_base', deployUrl);
+    return deployUrl;
+  }
+  
+  // 3. 返回空，需要在登录页手动配置
+  return '';
 }
 // 兼容旧代码的常量引用（指向函数调用结果，但关键路径使用 getApiBase()）
 const API_BASE = getApiBase();
@@ -503,10 +524,13 @@ function renderLogin() {
           <button onclick="handleRegister()" class="w-full bg-secondary text-white py-3 rounded-xl font-medium hover:bg-secondary/90 transition-all shadow-lg shadow-secondary/25 touch-btn">创建账号</button>
           <p class="text-center mt-4 text-sm text-gray-500 dark:text-gray-400">已有账号？<button onclick="toggleAuthMode()" class="text-primary font-medium">直接登录</button></p>
         </div>
+        ${/* 如果部署配置未设置 API 地址，显示手动输入框 */
+          (!window.__DEPLOY_CONFIG__ || !window.__DEPLOY_CONFIG__.API_BASE_URL) ? `
         <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
           <p class="text-xs text-gray-400 text-center">API 地址</p>
           <input type="text" id="api-base-input" value="${getApiBase()}" class="w-full mt-1 px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 text-gray-500 focus:border-primary outline-none" placeholder="https://your-api.workers.dev">
         </div>
+        ` : ''}
       </div>
     </div>
   `;
@@ -516,10 +540,15 @@ function renderLogin() {
 async function handleLogin() {
   const username = $('#login-username').value.trim();
   const password = $('#login-password').value;
-  const apiBase = $('#api-base-input').value.trim();
+  // 修复：优先使用部署配置，如果没有则从输入框读取
+  let apiBase = window.__DEPLOY_CONFIG__?.API_BASE_URL || '';
+  if (!apiBase) {
+    const apiInput = $('#api-base-input');
+    apiBase = apiInput ? apiInput.value.trim() : '';
+  }
   if (!username || !password) { showToast('请输入用户名和密码', 'error'); return; }
   // 修复 Bug4: 登录前验证 API 地址是否已设置
-  if (!apiBase) { showToast('请先填写后端 API 地址', 'error'); $('#api-base-input').focus(); return; }
+  if (!apiBase) { showToast('请先配置后端 API 地址', 'error'); return; }
   // 修复 Bug1: 保存后立即生效
   safeStorage.set('api_base', apiBase);
   try {
@@ -536,12 +565,17 @@ async function handleRegister() {
   const username = $('#reg-username').value.trim();
   const password = $('#reg-password').value;
   const email = $('#reg-email').value.trim();
-  const apiBase = $('#api-base-input').value.trim();
+  // 修复：优先使用部署配置，如果没有则从输入框读取
+  let apiBase = window.__DEPLOY_CONFIG__?.API_BASE_URL || '';
+  if (!apiBase) {
+    const apiInput = $('#api-base-input');
+    apiBase = apiInput ? apiInput.value.trim() : '';
+  }
   if (!username || !password) { showToast('请输入用户名和密码', 'error'); return; }
   if (username.length < 3) { showToast('用户名至少3位', 'error'); return; }
   if (password.length < 6) { showToast('密码至少6位', 'error'); return; }
   // 修复 Bug4: 注册前验证 API 地址是否已设置
-  if (!apiBase) { showToast('请先填写后端 API 地址', 'error'); $('#api-base-input').focus(); return; }
+  if (!apiBase) { showToast('请先配置后端 API 地址', 'error'); return; }
   // 修复 Bug1: 保存后立即生效
   safeStorage.set('api_base', apiBase);
   try {

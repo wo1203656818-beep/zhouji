@@ -42,6 +42,110 @@ function sanitize(str, maxLength = 500) {
     .slice(0, maxLength);
 }
 
+// ========== 数据库迁移函数 ==========
+let dbMigrated = false;
+async function migrateDatabase(db) {
+  if (dbMigrated) return;
+  
+  try {
+    // 检查 emotions 表的列
+    const tableInfo = await db.prepare('PRAGMA table_info(emotions)').all();
+    const columns = (tableInfo.results || []).map(col => col.name);
+    
+    // 添加新列（如果不存在）
+    const newColumns = [
+      { name: 'intensity', type: 'INTEGER DEFAULT 5' },
+      { name: 'trigger_factor', type: 'TEXT' },
+      { name: 'thought', type: 'TEXT' },
+      { name: 'activity', type: 'TEXT' }
+    ];
+    
+    for (const col of newColumns) {
+      if (!columns.includes(col.name)) {
+        try {
+          await db.prepare(`ALTER TABLE emotions ADD COLUMN ${col.name} ${col.type}`).run();
+          console.log(`Added column: ${col.name}`);
+        } catch (e) {
+          // 列可能已存在，忽略错误
+          console.log(`Column ${col.name} might already exist: ${e.message}`);
+        }
+      }
+    }
+    
+    // 检查 tasks 表的 priority 列
+    const tasksTableInfo = await db.prepare('PRAGMA table_info(tasks)').all();
+    const taskColumns = (tasksTableInfo.results || []).map(col => col.name);
+    
+    if (!taskColumns.includes('priority')) {
+      try {
+        await db.prepare('ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 3').run();
+        console.log('Added column: priority to tasks');
+      } catch (e) {
+        console.log(`Column priority might already exist: ${e.message}`);
+      }
+    }
+    
+    // 检查 diary_entries 表的新列
+    try {
+      const diaryTableInfo = await db.prepare('PRAGMA table_info(diary_entries)').all();
+      const diaryColumns = (diaryTableInfo.results || []).map(col => col.name);
+      
+      const diaryNewColumns = [
+        { name: 'cbt_thought', type: 'TEXT' },
+        { name: 'cbt_emotion', type: 'TEXT' },
+        { name: 'cbt_behavior', type: 'TEXT' },
+        { name: 'cbt_reframe', type: 'TEXT' },
+        { name: 'template_type', type: 'TEXT DEFAULT "free"' }
+      ];
+      
+      for (const col of diaryNewColumns) {
+        if (!diaryColumns.includes(col.name)) {
+          try {
+            await db.prepare(`ALTER TABLE diary_entries ADD COLUMN ${col.name} ${col.type}`).run();
+            console.log(`Added column: ${col.name} to diary_entries`);
+          } catch (e) {
+            console.log(`Column ${col.name} might already exist: ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      // diary_entries 表可能不存在（旧版本）
+      console.log('diary_entries table might not exist yet');
+    }
+    
+    // 检查 commitments 表的新列
+    try {
+      const commitmentsTableInfo = await db.prepare('PRAGMA table_info(commitments)').all();
+      const commitmentsColumns = (commitmentsTableInfo.results || []).map(col => col.name);
+      
+      const commitmentsNewColumns = [
+        { name: 'relapse_count', type: 'INTEGER DEFAULT 0' },
+        { name: 'last_relapse_date', type: 'DATETIME' },
+        { name: 'reminder_enabled', type: 'BOOLEAN DEFAULT 0' },
+        { name: 'reminder_time', type: 'TIME' }
+      ];
+      
+      for (const col of commitmentsNewColumns) {
+        if (!commitmentsColumns.includes(col.name)) {
+          try {
+            await db.prepare(`ALTER TABLE commitments ADD COLUMN ${col.name} ${col.type}`).run();
+            console.log(`Added column: ${col.name} to commitments`);
+          } catch (e) {
+            console.log(`Column ${col.name} might already exist: ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('commitments table check failed:', e.message);
+    }
+    
+    dbMigrated = true;
+    console.log('Database migration completed');
+  } catch (e) {
+    console.error('Database migration failed:', e.message);
+  }
+}
+
 // ========== 工具函数 ==========
 
 async function signJWT(payload, secret) {
@@ -100,10 +204,22 @@ async function hashPassword(password) {
 }
 
 function corsHeaders(origin, env = {}) {
-  // 修复 BE-009: CORS 安全，凭据模式下不能使用通配符
-  const allowedOrigin = origin && origin !== 'null' 
-    ? origin 
-    : (env.ALLOWED_ORIGIN || 'https://zhouji.pages.dev');
+  // 修复 BE-009: CORS 配置，支持多域名
+  const allowedOrigins = [
+    'https://zhouji-frontend.pages.dev',
+    'https://zhouji.pages.dev',
+    'http://localhost:8080',
+    'http://localhost:3000'
+  ];
+  
+  let allowedOrigin = 'https://zhouji-frontend.pages.dev'; // 默认
+  if (origin && allowedOrigins.includes(origin)) {
+    allowedOrigin = origin;
+  } else if (origin && origin !== 'null') {
+    // 动态允许其他来源（开发环境）
+    allowedOrigin = origin;
+  }
+  
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
@@ -307,20 +423,21 @@ router.post('/api/tasks', async (req, env) => {
   if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
-    const { title, description, category, difficulty, due_date } = await req.json();
+    const { title, description, category, difficulty, priority, due_date } = await req.json();
     const cleanTitle = sanitize(title, 200);
     if (!cleanTitle || cleanTitle.length < 1) return jsonResponse({ error: '任务标题不能为空', success: false }, 400);
     if (cleanTitle.length > 200) return jsonResponse({ error: '任务标题不能超过200字符', success: false }, 400);
     var cleanDesc = sanitize(description, 1000);
     var cleanCat = sanitize(category, 50) || 'general';
     var cleanDiff = sanitizeNumber(difficulty, 1, 5);
+    var cleanPriority = sanitizeNumber(priority, 1, 5);
     var cleanDate = sanitizeDate(due_date);
 
     const db = env.DB;
     const result = await db.prepare(
-      `INSERT INTO tasks (user_id, title, description, category, difficulty, due_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending')`
-    ).bind(auth.userId, cleanTitle, cleanDesc, cleanCat, cleanDiff, cleanDate).run();
+      `INSERT INTO tasks (user_id, title, description, category, difficulty, priority, due_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`
+    ).bind(auth.userId, cleanTitle, cleanDesc, cleanCat, cleanDiff, cleanPriority, cleanDate).run();
 
     const taskId = getLastRowId(result);
     await updateDailyStat(db, auth.userId, 'tasks_created');
@@ -370,7 +487,7 @@ router.put('/api/tasks/:id', async (req, env) => {
 
   try {
     const taskId = req.params.id;
-    const { title, description, status, difficulty, due_date } = await req.json();
+    const { title, description, status, difficulty, priority, due_date } = await req.json();
 
     const db = env.DB;
     const existing = await db.prepare('SELECT status FROM tasks WHERE id = ? AND user_id = ?')
@@ -383,6 +500,7 @@ router.put('/api/tasks/:id', async (req, env) => {
     if (description !== undefined) { updates.push('description = ?'); bindings.push(sanitize(description)); }
     if (status !== undefined) { updates.push('status = ?'); bindings.push(status); }
     if (difficulty !== undefined) { updates.push('difficulty = ?'); bindings.push(Math.min(5, Math.max(1, parseInt(difficulty) || 3))); }
+    if (priority !== undefined) { updates.push('priority = ?'); bindings.push(Math.min(5, Math.max(1, parseInt(priority) || 3))); }
     if (due_date !== undefined) { updates.push('due_date = ?'); bindings.push(due_date); }
     updates.push('updated_at = CURRENT_TIMESTAMP');
     bindings.push(taskId, auth.userId);
@@ -508,18 +626,26 @@ router.post('/api/emotions', async (req, env) => {
   if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
-    const { emotion_type, energy_level, trigger_task, cbt_response } = await req.json();
-    var validEmotions = ['vague', 'fear', 'boring', 'distracted', 'tired', 'anxious', 'confident', 'calm'];
+    const { emotion_type, energy_level, trigger_task, cbt_response, intensity, trigger_factor, thought, activity } = await req.json();
+    var validEmotions = ['vague', 'fear', 'boring', 'distracted', 'tired', 'anxious', 'confident', 'calm', 'excited', 'frustrated', 'overwhelmed', 'hopeful'];
     if (!emotion_type || !validEmotions.includes(emotion_type)) {
       return jsonResponse({ error: '情绪类型无效', success: false }, 400);
     }
 
     const db = env.DB;
     const result = await db.prepare(
-      `INSERT INTO emotions (user_id, emotion_type, energy_level, trigger_task, cbt_response)
-       VALUES (?, ?, ?, ?, ?)`
-    ).bind(auth.userId, sanitize(emotion_type), Math.min(5, Math.max(1, parseInt(energy_level) || 3)),
-           sanitize(trigger_task), sanitize(cbt_response)).run();
+      `INSERT INTO emotions (user_id, emotion_type, energy_level, trigger_task, cbt_response, intensity, trigger_factor, thought, activity)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(auth.userId, 
+           sanitize(emotion_type), 
+           Math.min(5, Math.max(1, parseInt(energy_level) || 3)),
+           sanitize(trigger_task),
+           sanitize(cbt_response, 1000),
+           Math.min(10, Math.max(1, parseInt(intensity) || 5)),
+           sanitize(trigger_factor, 200),
+           sanitize(thought, 500),
+           sanitize(activity, 200)
+    ).run();
 
     return jsonResponse({ success: true, emotionId: getLastRowId(result) });
   } catch (e) {
@@ -638,18 +764,44 @@ router.post('/api/commitments', async (req, env) => {
   if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
-    const { task_id, description, witness_type, witness_contact, deadline } = await req.json();
+    const { task_id, description, witness_type, witness_contact, deadline, reminder_enabled, reminder_time } = await req.json();
     const cleanDesc = sanitize(description);
     if (!cleanDesc) return jsonResponse({ error: '承诺描述不能为空' }, 400);
 
     const db = env.DB;
     const result = await db.prepare(
-      `INSERT INTO commitments (user_id, task_id, description, witness_type, witness_contact, deadline)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO commitments (user_id, task_id, description, witness_type, witness_contact, deadline, reminder_enabled, reminder_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(auth.userId, task_id || null, cleanDesc, sanitize(witness_type) || 'self',
-           sanitize(witness_contact), deadline || null).run();
+           sanitize(witness_contact), deadline || null, 
+           reminder_enabled ? 1 : 0, reminder_time || null).run();
 
     return jsonResponse({ success: true, commitmentId: getLastRowId(result) });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
+// 记录破戒
+router.post('/api/commitments/:id/relapse', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+
+  try {
+    const commitmentId = req.params.id;
+    const db = env.DB;
+    
+    const existing = await db.prepare('SELECT * FROM commitments WHERE id = ? AND user_id = ?')
+      .bind(commitmentId, auth.userId).first();
+    if (!existing) return jsonResponse({ error: '承诺不存在' }, 404);
+    
+    const newRelapseCount = (existing.relapse_count || 0) + 1;
+    
+    await db.prepare(
+      `UPDATE commitments SET relapse_count = ?, last_relapse_date = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`
+    ).bind(newRelapseCount, commitmentId, auth.userId).run();
+    
+    return jsonResponse({ success: true, relapseCount: newRelapseCount });
   } catch (e) {
     return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
   }
@@ -678,12 +830,14 @@ router.put('/api/commitments/:id', async (req, env) => {
   if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
-    const { completed, description } = await req.json();
+    const { completed, description, reminder_enabled, reminder_time } = await req.json();
     const db = env.DB;
     const updates = [];
     const bindings = [];
     if (completed !== undefined) { updates.push('completed = ?'); bindings.push(completed ? 1 : 0); }
     if (description !== undefined) { updates.push('description = ?'); bindings.push(sanitize(description)); }
+    if (reminder_enabled !== undefined) { updates.push('reminder_enabled = ?'); bindings.push(reminder_enabled ? 1 : 0); }
+    if (reminder_time !== undefined) { updates.push('reminder_time = ?'); bindings.push(reminder_time || null); }
     bindings.push(req.params.id, auth.userId);
 
     await db.prepare(`UPDATE commitments SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`).bind(...bindings).run();
@@ -944,20 +1098,45 @@ router.get('/api/dashboard', async (req, env) => {
        FROM daily_stats WHERE user_id = ? AND stat_date >= date('now', '-7 days')
        ORDER BY stat_date`
     ).bind(userId).all();
+    
+    // 获取每周情绪摘要
+    const weeklyEmotions = await db.prepare(
+      `SELECT date(created_at) as emotion_date, emotion_type, COUNT(*) as count
+       FROM emotions WHERE user_id = ? AND date(created_at) >= date('now', '-7 days')
+       GROUP BY emotion_date, emotion_type
+       ORDER BY emotion_date`
+    ).bind(userId).all();
+    
+    // 将情绪数据附加到 weeklyStats
+    const weeklyStatsWithEmotions = (weeklyStats.results || []).map(stat => {
+      const dayEmotions = (weeklyEmotions.results || []).filter(e => e.emotion_date === stat.stat_date);
+      const topEmotion = dayEmotions.sort((a, b) => b.count - a.count)[0];
+      return { ...stat, emotion_type: topEmotion ? topEmotion.emotion_type : null };
+    });
 
     const todayPomodoro = await db.prepare(
       `SELECT COUNT(*) as count, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as completed
        FROM pomodoro_sessions WHERE user_id = ? AND date(created_at) = ?`
     ).bind(userId, today).first();
 
+    // 获取即将到期任务（今天到期或已过期但未完成）
+    const upcomingTasks = await db.prepare(
+      `SELECT * FROM tasks 
+       WHERE user_id = ? AND status != 'completed' AND due_date IS NOT NULL 
+       AND (due_date <= date('now', '+3 days')) 
+       ORDER BY due_date ASC 
+       LIMIT 10`
+    ).bind(userId).all();
+    
     return jsonResponse({
       success: true,
       todayStats: todayStats || { tasks_created: 0, tasks_started: 0, tasks_completed: 0, micro_starts_count: 0, procrastination_count: 0, pomodoro_count: 0 },
       pendingTasks: pendingTasks.results || [],
       todayBlocks: todayBlocks.results || [],
       recentEmotion,
-      weeklyStats: weeklyStats.results || [],
-      todayPomodoro: todayPomodoro || { count: 0, completed: 0 }
+      weeklyStats: weeklyStatsWithEmotions || [],
+      todayPomodoro: todayPomodoro || { count: 0, completed: 0 },
+      upcomingTasks: upcomingTasks.results || []
     });
   } catch (e) {
     return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
@@ -1130,6 +1309,206 @@ router.post('/api/import', async (req, env) => {
   }
 });
 
+// ========== 日记功能 ==========
+
+// 创建日记条目
+router.post('/api/diary', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+
+  try {
+    const { title, content, mood, weather, location, is_private, template_type, cbt_thought, cbt_emotion, cbt_behavior, cbt_reframe, media } = await req.json();
+    const cleanTitle = sanitize(title, 200) || '无标题';
+    const cleanContent = sanitize(content, 5000);
+    const cleanMood = sanitize(mood, 20) || 'neutral';
+    const cleanWeather = sanitize(weather, 50);
+    const cleanLocation = sanitize(location, 100);
+    const cleanTemplateType = sanitize(template_type, 20) || 'free';
+    const privateFlag = is_private !== false ? 1 : 0;
+
+    const db = env.DB;
+    const result = await db.prepare(
+      `INSERT INTO diary_entries (user_id, title, content, mood, weather, location, is_private, template_type, cbt_thought, cbt_emotion, cbt_behavior, cbt_reframe)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(auth.userId, cleanTitle, cleanContent, cleanMood, cleanWeather, cleanLocation, privateFlag, cleanTemplateType, 
+         sanitize(cbt_thought, 2000), sanitize(cbt_emotion, 1000), sanitize(cbt_behavior, 2000), sanitize(cbt_reframe, 2000)).run();
+
+    const entryId = getLastRowId(result);
+
+    // 保存媒体文件（如果有）
+    if (media && Array.isArray(media) && entryId) {
+      for (const m of media) {
+        if (m.file_url && m.media_type) {
+          await db.prepare(
+            `INSERT INTO diary_media (entry_id, user_id, media_type, file_name, file_url, file_size, duration, width, height)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            entryId,
+            auth.userId,
+            sanitize(m.media_type, 10),
+            sanitize(m.file_name, 200),
+            m.file_url,
+            parseInt(m.file_size) || 0,
+            parseInt(m.duration) || null,
+            parseInt(m.width) || null,
+            parseInt(m.height) || null
+          ).run();
+        }
+      }
+    }
+
+    return jsonResponse({ success: true, entryId });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
+// 获取日记列表
+router.get('/api/diary', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+
+  try {
+    const url = new URL(req.url);
+    const limit = parseInt(url.searchParams.get('limit')) || 50;
+    const offset = parseInt(url.searchParams.get('offset')) || 0;
+    const mood = url.searchParams.get('mood');
+    const template_type = url.searchParams.get('template_type');
+    const search = url.searchParams.get('search');
+
+    const db = env.DB;
+    let sql = 'SELECT * FROM diary_entries WHERE user_id = ?';
+    let bindings = [auth.userId];
+
+    if (mood) { sql += ' AND mood = ?'; bindings.push(mood); }
+    if (template_type) { sql += ' AND template_type = ?'; bindings.push(template_type); }
+    if (search) { sql += ' AND (title LIKE ? OR content LIKE ? OR cbt_thought LIKE ? OR cbt_reframe LIKE ?)'; bindings.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
+    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    bindings.push(limit, offset);
+
+    const { results } = await db.prepare(sql).bind(...bindings).all();
+
+    // 为每条日记加载媒体文件
+    for (const entry of results) {
+      const media = await db.prepare(
+        'SELECT * FROM diary_media WHERE entry_id = ? ORDER BY created_at'
+      ).bind(entry.id).all();
+      entry.media = media.results || [];
+    }
+
+    return jsonResponse({ success: true, entries: results });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
+// 获取单条日记详情
+router.get('/api/diary/:id', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+
+  try {
+    const db = env.DB;
+    const entry = await db.prepare(
+      'SELECT * FROM diary_entries WHERE id = ? AND user_id = ?'
+    ).bind(req.params.id, auth.userId).first();
+
+    if (!entry) return jsonResponse({ error: '日记不存在' }, 404);
+
+    const media = await db.prepare(
+      'SELECT * FROM diary_media WHERE entry_id = ? ORDER BY created_at'
+    ).bind(entry.id).all();
+
+    entry.media = media.results || [];
+
+    return jsonResponse({ success: true, entry });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
+// 更新日记
+router.put('/api/diary/:id', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+
+  try {
+    const entryId = req.params.id;
+    const { title, content, mood, weather, location, is_private, template_type, cbt_thought, cbt_emotion, cbt_behavior, cbt_reframe, media } = await req.json();
+
+    const db = env.DB;
+    const existing = await db.prepare('SELECT id FROM diary_entries WHERE id = ? AND user_id = ?')
+      .bind(entryId, auth.userId).first();
+    if (!existing) return jsonResponse({ error: '日记不存在' }, 404);
+
+    const updates = [];
+    const bindings = [];
+
+    if (title !== undefined) { updates.push('title = ?'); bindings.push(sanitize(title, 200)); }
+    if (content !== undefined) { updates.push('content = ?'); bindings.push(sanitize(content, 5000)); }
+    if (mood !== undefined) { updates.push('mood = ?'); bindings.push(sanitize(mood, 20)); }
+    if (weather !== undefined) { updates.push('weather = ?'); bindings.push(sanitize(weather, 50)); }
+    if (location !== undefined) { updates.push('location = ?'); bindings.push(sanitize(location, 100)); }
+    if (is_private !== undefined) { updates.push('is_private = ?'); bindings.push(is_private ? 1 : 0); }
+    if (template_type !== undefined) { updates.push('template_type = ?'); bindings.push(sanitize(template_type, 20)); }
+    if (cbt_thought !== undefined) { updates.push('cbt_thought = ?'); bindings.push(sanitize(cbt_thought, 2000)); }
+    if (cbt_emotion !== undefined) { updates.push('cbt_emotion = ?'); bindings.push(sanitize(cbt_emotion, 1000)); }
+    if (cbt_behavior !== undefined) { updates.push('cbt_behavior = ?'); bindings.push(sanitize(cbt_behavior, 2000)); }
+    if (cbt_reframe !== undefined) { updates.push('cbt_reframe = ?'); bindings.push(sanitize(cbt_reframe, 2000)); }
+    updates.push("updated_at = CURRENT_TIMESTAMP");
+    bindings.push(entryId, auth.userId);
+
+    await db.prepare(`UPDATE diary_entries SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`).bind(...bindings).run();
+
+    // 更新媒体文件（先删除旧的，再插入新的）
+    if (media && Array.isArray(media)) {
+      await db.prepare('DELETE FROM diary_media WHERE entry_id = ? AND user_id = ?').bind(entryId, auth.userId).run();
+
+      for (const m of media) {
+        if (m.file_url && m.media_type) {
+          await db.prepare(
+            `INSERT INTO diary_media (entry_id, user_id, media_type, file_name, file_url, file_size, duration, width, height)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            entryId,
+            auth.userId,
+            sanitize(m.media_type, 10),
+            sanitize(m.file_name, 200),
+            m.file_url,
+            parseInt(m.file_size) || 0,
+            parseInt(m.duration) || null,
+            parseInt(m.width) || null,
+            parseInt(m.height) || null
+          ).run();
+        }
+      }
+    }
+
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
+// 删除日记
+router.delete('/api/diary/:id', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+
+  try {
+    const db = env.DB;
+    const entryId = req.params.id;
+
+    // 级联删除媒体文件
+    await db.prepare('DELETE FROM diary_media WHERE entry_id = ? AND user_id = ?').bind(entryId, auth.userId).run();
+    await db.prepare('DELETE FROM diary_entries WHERE id = ? AND user_id = ?').bind(entryId, auth.userId).run();
+
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
 // ========== 主入口 ==========
 
 
@@ -1165,6 +1544,9 @@ export default {
     const url = new URL(request.url);
     const origin = request.headers.get('Origin') || '*';
     const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+
+    // 数据库迁移（只在第一次请求时执行）
+    await migrateDatabase(env.DB);
 
     // 修复: OPTIONS 预检请求必须最先处理，且包含 CORS 头
     if (request.method === 'OPTIONS') {

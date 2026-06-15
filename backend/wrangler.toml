@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "zhouji-db"
-database_id = "24dcebbd-9af9-4314-9fc4-dff010d56f46"
+database_id = "75ec6cc9-f215-40a5-812d-83cc30f88293"
 
 [vars]
 NODE_ENV = "production"

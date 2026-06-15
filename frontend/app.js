@@ -258,6 +258,10 @@ const routes = {
   'emotion': renderEmotion, 'tasks': renderTasks,
   'task-detail': renderTaskDetail, 'micro-start': renderMicroStart,
   'pomodoro': renderPomodoro, 'lab': renderLab,
+  'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
+  'time-blocks': renderTimeBlocks,
+  'diary': function() { return (window.renderDiary || renderDiary).apply(this, arguments); },
+};
   'commitments': renderCommitments, 'time-blocks': renderTimeBlocks,
   'settings': renderSettings
 };
@@ -313,6 +317,7 @@ function renderNav() {
 
   const items = [
     { id: 'dashboard', icon: 'fa-chart-line', label: '仪表盘' },
+    { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'emotion', icon: 'fa-heart', label: '情绪舱' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务台' },
     { id: 'micro-start', icon: 'fa-play-circle', label: '微启动' },
@@ -507,6 +512,15 @@ function getEmotionCBT(type) {
   return map[type] || '开始行动，哪怕只有2分钟。';
 }
 
+function getPriorityLabel(priority) {
+  const map = { 1: '🔴 紧急重要', 2: '🟠 紧急不重要', 3: '🟡 重要不紧急', 4: '🟢 不紧急不重要', 5: '⚪ 可延期' };
+  return map[priority] || '未设置';
+}
+function getPriorityStyle(priority) {
+  const map = { 1: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', 2: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', 3: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', 4: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', 5: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400' };
+  return map[priority] || 'bg-gray-100 text-gray-700';
+}
+
 function showToast(message, type) {
   if (type === void 0) { type = 'success'; }
   var existing = document.querySelector('.toast-notification');
@@ -665,6 +679,22 @@ async function renderDashboard() {
             <button onclick="navigate('emotion')" class="w-full mt-4 bg-white/80 dark:bg-white/10 backdrop-blur text-primary py-2 rounded-xl text-sm font-medium hover:bg-white dark:hover:bg-white/20 transition-all touch-btn">${emotion ? '重新扫描' : '情绪扫描'}</button>
           </div>
 
+          ${data.upcomingTasks && data.upcomingTasks.length > 0 ? `
+          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+            <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-exclamation-circle text-accent"></i> 即将到期</h3>
+            <div class="space-y-3">
+              ${data.upcomingTasks.map(task => `
+                <div class="flex items-center gap-3 p-3 rounded-xl ${new Date(task.due_date) < new Date() ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50 dark:bg-gray-700/50'}">
+                  <div class="flex-1 min-w-0">
+                    <p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${task.title}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date) < new Date() ? ' ⚠️ 已过期' : ' ⏰ 即将到期'}</p>
+                  </div>
+                  <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-3 py-1.5 rounded-lg text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">查看</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
           <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
             <h3 class="font-bold text-gray-800 dark:text-white mb-4">快速行动</h3>
             <div class="space-y-3">
@@ -852,11 +882,17 @@ async function loadTasks() {
       return;
     }
     container.innerHTML = state.tasks.map(task => `
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 hover:border-primary/30 dark:hover:border-primary/30 transition-all">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 hover:border-primary/30 dark:hover:border-primary/30 transition-all ${task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'border-red-300 dark:border-red-700' : ''}">
         <div class="flex items-start justify-between mb-3">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400"><i class="fas fa-${getCategoryIcon(task.category)}"></i></div>
-            <div><h4 class="font-medium text-gray-800 dark:text-gray-200">${task.title}</h4><p class="text-xs text-gray-500 dark:text-gray-400">${task.category} · 难度 ${'★'.repeat(task.difficulty)}${'☆'.repeat(5-task.difficulty)}</p></div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h4 class="font-medium text-gray-800 dark:text-gray-200">${task.title}</h4>
+                ${task.priority ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${getPriorityStyle(task.priority)}">${getPriorityLabel(task.priority)}</span>` : ''}
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">${task.category} · 难度 ${'★'.repeat(task.difficulty)}${'☆'.repeat(5-task.difficulty)}</p>
+            </div>
           </div>
           <span class="px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
         </div>
@@ -864,7 +900,7 @@ async function loadTasks() {
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
             <span><i class="fas fa-shoe-prints mr-1"></i>${task.steps_count} 个步骤</span>
-            ${task.due_date ? `<span><i class="fas fa-calendar mr-1"></i>${task.due_date}</span>` : ''}
+            ${task.due_date ? `<span class="${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-500 dark:text-red-400 font-medium' : ''}"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date) < new Date() && task.status !== 'completed' ? ' ⚠️' : ''}</span>` : ''}
           </div>
           <div class="flex gap-2">
             <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-3 py-1.5 rounded-lg text-sm bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">拆解</button>
@@ -951,7 +987,7 @@ function showTaskModal() {
           <input type="text" id="new-task-title" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none" placeholder="例如：写论文、整理房间" onkeydown="if(event.key==='Enter')createTask()"></div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">描述（可选）</label>
           <textarea id="new-task-desc" rows="2" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none resize-none" placeholder="补充说明..."></textarea></div>
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-3 gap-4">
           <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">分类</label>
             <select id="new-task-category" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
               <option value="general">一般</option><option value="work">工作</option><option value="study">学习</option><option value="health">健康</option><option value="life">生活</option><option value="social">社交</option>
@@ -959,6 +995,10 @@ function showTaskModal() {
           <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">难度</label>
             <select id="new-task-difficulty" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
               <option value="1">⭐ 非常简单</option><option value="2">⭐⭐ 简单</option><option value="3" selected>⭐⭐⭐ 中等</option><option value="4">⭐⭐⭐⭐ 困难</option><option value="5">⭐⭐⭐⭐⭐ 非常困难</option>
+            </select></div>
+          <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">优先级</label>
+            <select id="new-task-priority" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+              <option value="1">🔴 紧急重要</option><option value="2">🟠 紧急不重要</option><option value="3" selected>🟡 重要不紧急</option><option value="4">🟢 不紧急不重要</option><option value="5">⚪ 可延期</option>
             </select></div>
         </div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">截止日期（可选）</label>
@@ -978,6 +1018,7 @@ async function createTask() {
       title, description: $('#new-task-desc').value,
       category: $('#new-task-category').value,
       difficulty: parseInt($('#new-task-difficulty').value),
+      priority: parseInt($('#new-task-priority').value),
       due_date: $('#new-task-due').value || null
     });
     showToast('任务创建成功');
@@ -1019,8 +1060,9 @@ async function renderTaskDetail() {
         <div class="flex flex-wrap gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
           <span class="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700">${task.category}</span>
           <span class="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700">难度 ${'★'.repeat(task.difficulty)}${'☆'.repeat(5-task.difficulty)}</span>
+          ${task.priority ? `<span class="px-3 py-1 rounded-full ${getPriorityStyle(task.priority)} cursor-pointer hover:opacity-80" onclick="showPriorityModal(${task.id}, ${task.priority})">${getPriorityLabel(task.priority)} · 点击编辑</span>` : '<span class="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600" onclick="showPriorityModal('+task.id+', 3)">设置优先级</span>'}
           <span class="px-3 py-1 rounded-full ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
-          ${task.due_date ? `<span class="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700"><i class="fas fa-calendar mr-1"></i>${task.due_date}</span>` : ''}
+          ${task.due_date ? `<span class="px-3 py-1 rounded-full ${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700'}"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date) < new Date() && task.status !== 'completed' ? ' ⚠️' : ''}</span>` : ''}
         </div>
         <div class="flex gap-2">
           ${task.status !== 'completed' ? `
@@ -1084,6 +1126,10 @@ async function updateTaskStatus(id, status) {
   try { await api.put(`/api/tasks/${id}`, { status }); showToast(status === 'completed' ? '任务已完成！' : '任务已重新打开'); navigate('task-detail', { id }); }
   catch (err) { showToast(err.message, 'error'); }
 }
+async function updateTaskPriority(taskId, priority) {
+  try { await api.put(`/api/tasks/${taskId}`, { priority }); showToast('优先级已更新'); navigate('task-detail', { id: taskId }); }
+  catch (err) { showToast(err.message, 'error'); }
+}
 async function toggleStep(stepId, currentStatus) {
   const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
   try { await api.put(`/api/steps/${stepId}`, { status: newStatus }); navigate('task-detail', { id: state.pageParams.id }); }
@@ -1123,6 +1169,30 @@ async function createStep(taskId) {
 function startStepMicro(taskId, stepId) {
   state.activeTask = taskId; state.activeStep = stepId;
   navigate('micro-start');
+}
+
+function showPriorityModal(taskId, currentPriority) {
+  const modal = el('div', 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 modal-backdrop');
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 modal-content shadow-2xl border border-gray-100 dark:border-gray-700">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="font-bold text-xl text-gray-800 dark:text-white">设置优先级</h3>
+        <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
+      </div>
+      <div class="space-y-3">
+        ${[1,2,3,4,5].map(p => `
+          <button onclick="updateTaskPriority(${taskId}, ${p}); this.closest('.fixed').remove();" class="w-full p-4 rounded-xl border-2 transition-all text-left touch-btn ${p == currentPriority ? 'border-primary bg-primary/5 dark:bg-primary/10' : 'border-gray-100 dark:border-gray-700 hover:border-primary/30'}">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-gray-800 dark:text-white">${getPriorityLabel(p)}</span>
+              ${p == currentPriority ? '<i class="fas fa-check text-primary"></i>' : ''}
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${p === 1 ? '必须立即处理' : p === 2 ? '需要快速处理' : p === 3 ? '重要但不急' : p === 4 ? '可以稍后处理' : '可以无限延期'}</p>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 }
 
 // ========== 微启动 ==========
@@ -1605,12 +1675,14 @@ async function loadCommitments() {
         <div class="flex items-start justify-between mb-3">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-full ${c.completed ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'} flex items-center justify-center"><i class="fas fa-${c.completed ? 'check' : 'handshake'}"></i></div>
-            <div><p class="font-medium text-gray-800 dark:text-gray-200 ${c.completed ? 'line-through' : ''}">${c.description}</p><p class="text-xs text-gray-500 dark:text-gray-400">${c.witness_type === 'self' ? '自我承诺' : '外部见证'} · ${c.task_title || '独立承诺'}</p></div>
+            <div><p class="font-medium text-gray-800 dark:text-gray-200 ${c.completed ? 'line-through' : ''}">${c.description}</p><p class="text-xs text-gray-500 dark:text-gray-400">${c.witness_type === 'self' ? '自我承诺' : '外部见证'} · ${c.task_title || '独立承诺'}${c.relapse_count > 0 ? ` · 破戒 ${c.relapse_count} 次` : ''}</p></div>
           </div>
           <span class="px-3 py-1 rounded-full text-xs font-medium ${c.completed ? 'bg-secondary/10 text-secondary' : 'bg-accent/10 text-accent'}">${c.completed ? '已完成' : '进行中'}</span>
         </div>
         ${c.deadline ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-3"><i class="fas fa-clock mr-1"></i>截止 ${new Date(c.deadline).toLocaleString('zh-CN')}</p>` : ''}
+        ${c.relapse_count > 0 ? `<p class="text-xs text-red-500 dark:text-red-400 mb-3"><i class="fas fa-exclamation-triangle mr-1"></i>已破戒 ${c.relapse_count} 次${c.last_relapse_date ? `，最近一次：${new Date(c.last_relapse_date).toLocaleDateString('zh-CN')}` : ''}</p>` : ''}
         <div class="flex gap-2">
+          ${!c.completed ? `<button onclick="recordRelapse(${c.id})" class="flex-1 bg-red-50 dark:bg-red-900/20 text-danger py-2 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-times-circle mr-1"></i>记录破戒</button>` : ''}
           ${!c.completed ? `<button onclick="completeCommitment(${c.id})" class="flex-1 bg-secondary/10 text-secondary py-2 rounded-xl text-sm font-medium hover:bg-secondary/20 transition-all touch-btn"><i class="fas fa-check mr-1"></i>标记完成</button>` : `<button onclick="completeCommitment(${c.id}, false)" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all touch-btn"><i class="fas fa-undo mr-1"></i>撤销</button>`}
           <button onclick="deleteCommitment(${c.id})" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
         </div>
@@ -1635,18 +1707,43 @@ function showCommitmentModal() {
           </select></div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">截止日期（可选）</label>
           <input type="datetime-local" id="commitment-deadline" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none"></div>
+        <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="commitment-reminder" class="rounded border-gray-300 text-primary focus:ring-primary">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">启用提醒</span>
+          </label>
+          <div id="reminder-time-container" class="mt-2" style="display: none;">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">提醒时间</label>
+            <input type="time" id="commitment-reminder-time" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+          </div>
+        </div>
       </div>
       <div class="mt-6"><button onclick="createCommitment()" class="w-full bg-primary text-white py-3 rounded-xl font-medium hover:bg-primary/90 transition-all touch-btn">创建承诺</button></div>
     </div>
   `;
+  
   document.body.appendChild(modal);
+  
+  // 监听提醒复选框
+  $('#commitment-reminder').addEventListener('change', function() {
+    $('#reminder-time-container').style.display = this.checked ? 'block' : 'none';
+  });
 }
 
 async function createCommitment() {
   const desc = $('#commitment-desc').value.trim();
   if (!desc) { showToast('请输入承诺内容', 'error'); return; }
   try {
-    await api.post('/api/commitments', { description: desc, witness_type: $('#commitment-witness').value, deadline: $('#commitment-deadline').value || null });
+    const reminderEnabled = $('#commitment-reminder')?.checked || false;
+    const reminderTime = $('#commitment-reminder-time')?.value || null;
+    
+    await api.post('/api/commitments', { 
+      description: desc, 
+      witness_type: $('#commitment-witness').value, 
+      deadline: $('#commitment-deadline').value || null,
+      reminder_enabled: reminderEnabled,
+      reminder_time: reminderEnabled ? reminderTime : null
+    });
     showToast('承诺已创建'); $('.fixed').remove(); loadCommitments();
   } catch (err) { showToast(err.message, 'error'); }
 }
@@ -1654,6 +1751,15 @@ async function createCommitment() {
 async function completeCommitment(id, completed = true) {
   try { await api.put(`/api/commitments/${id}`, { completed }); showToast(completed ? '承诺已完成！' : '已撤销'); loadCommitments(); }
   catch (err) { showToast(err.message, 'error'); }
+}
+
+async function recordRelapse(id) {
+  if (!confirm('确定要记录一次破戒吗？')) return;
+  try {
+    await api.post(`/api/commitments/${id}/relapse`);
+    showToast('已记录破戒');
+    loadCommitments();
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 async function deleteCommitment(id) {
@@ -1918,7 +2024,7 @@ document.addEventListener('keydown', (e) => {
   }
   // 导航快捷键
   if (e.altKey) {
-    const navMap = { '1': 'dashboard', '2': 'emotion', '3': 'tasks', '4': 'micro-start', '5': 'pomodoro', '6': 'lab', '7': 'commitments', '8': 'time-blocks' };
+    const navMap = { '1': 'dashboard', '2': 'diary', '3': 'emotion', '4': 'tasks', '5': 'micro-start', '6': 'pomodoro', '7': 'lab', '8': 'commitments', '9': 'time-blocks' };
     if (navMap[e.key]) { e.preventDefault(); navigate(navMap[e.key]); }
   }
 });
@@ -2022,6 +2128,7 @@ window.createTask = createTask;
 window.createTimeBlock = createTimeBlock;
 window.debouncedSearch = debouncedSearch;
 window.deleteCommitment = deleteCommitment;
+window.recordRelapse = recordRelapse;
 window.deleteTask = deleteTask;
 window.deleteTimeBlock = deleteTimeBlock;
 window.exportData = exportData;
@@ -2067,4 +2174,14 @@ window.useTemplate = useTemplate;
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.logout = logout;
+
+// ========== 初始化 ==========
+document.addEventListener('DOMContentLoaded', function() {
+  const token = localStorage.getItem('token');
+  if (token) {
+    navigate('dashboard');
+  } else {
+    navigate('login');
+  }
+});
 })();

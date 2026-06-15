@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     description TEXT,
     category TEXT DEFAULT 'general',
     difficulty INTEGER DEFAULT 3,
+    priority INTEGER DEFAULT 3,
     status TEXT DEFAULT 'pending',
     due_date DATE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -85,6 +86,10 @@ CREATE TABLE IF NOT EXISTS commitments (
     witness_contact TEXT,
     deadline DATETIME,
     completed BOOLEAN DEFAULT 0,
+    relapse_count INTEGER DEFAULT 0,
+    last_relapse_date DATETIME,
+    reminder_enabled BOOLEAN DEFAULT 0,
+    reminder_time TIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -151,3 +156,45 @@ CREATE INDEX IF NOT EXISTS idx_daily_stats_user_date ON daily_stats(user_id, sta
 -- 1. updated_at自动更新: 在UPDATE语句中显式设置
 -- 2. 级联删除: 在删除用户前手动清理关联数据
 -- 3. 外键约束: D1默认不强制执行，请在应用层验证
+
+-- ========== 日记表 ==========
+CREATE TABLE IF NOT EXISTS diary_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT,
+    mood TEXT DEFAULT 'neutral',
+    weather TEXT,
+    location TEXT,
+    is_private BOOLEAN DEFAULT 1,
+    cbt_thought TEXT,  -- CBT: 自动思维
+    cbt_emotion TEXT,   -- CBT: 情绪
+    cbt_behavior TEXT,  -- CBT: 行为
+    cbt_reframe TEXT,    -- CBT: 重构思维
+    template_type TEXT DEFAULT 'free',  -- 模板类型: free, cbt, gratitude, reflection
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ========== 日记媒体表（图片、视频、语音） ==========
+CREATE TABLE IF NOT EXISTS diary_media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    media_type TEXT NOT NULL,  -- 'image', 'video', 'audio'
+    file_name TEXT,
+    file_url TEXT NOT NULL,
+    file_size INTEGER,
+    duration INTEGER,  -- 视频/音频时长（秒）
+    width INTEGER,  -- 图片/视频宽度
+    height INTEGER,  -- 图片/视频高度
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (entry_id) REFERENCES diary_entries(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ========== 日记索引 ==========
+CREATE INDEX IF NOT EXISTS idx_diary_entries_user ON diary_entries(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_diary_media_entry ON diary_media(entry_id);
+CREATE INDEX IF NOT EXISTS idx_diary_media_user ON diary_media(user_id);

@@ -453,7 +453,7 @@ function renderNav() {
   ];
   const current = state.currentPage;
 
-  let html = `<div class="flex md:flex-col justify-around md:justify-start md:p-4 h-16 md:h-full items-center md:items-stretch">`;
+  let html = `<div class="flex md:flex-col overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide justify-start md:justify-start md:p-4 h-16 md:h-full items-center md:items-stretch px-2 md:px-0 gap-1 md:gap-0">`;
 
   html += `
     <div class="hidden md:flex items-center gap-3 px-4 py-6 mb-4">
@@ -465,9 +465,9 @@ function renderNav() {
   items.forEach(item => {
     const active = current === item.id ? 'text-primary bg-primary/5 dark:bg-primary/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50';
     html += `
-      <button onclick="navigate('${item.id}')" class="touch-btn flex flex-col md:flex-row items-center md:gap-3 md:px-4 md:py-3 rounded-xl transition-all ${active}">
-        <i class="fas ${item.icon} text-lg md:text-xl mb-1 md:mb-0"></i>
-        <span class="text-xs md:text-sm font-medium">${item.label}</span>
+      <button onclick="navigate('${item.id}')" class="touch-btn flex flex-col md:flex-row items-center md:gap-3 md:px-4 md:py-3 rounded-xl transition-all snap-start flex-shrink-0 min-w-[4.5rem] md:min-w-0 px-2 py-1 ${active}">
+        <i class="fas ${item.icon} text-lg md:text-xl mb-0.5 md:mb-0"></i>
+        <span class="text-[10px] sm:text-xs md:text-sm font-medium truncate">${item.label}</span>
       </button>
     `;
   });
@@ -866,7 +866,7 @@ function renderTimeTerrain(blocks) {
   }
   const hours = Array.from({length: 24}, (_, i) => i);
   const now = new Date(); const currentHour = now.getHours();
-  let html = '<div class="absolute inset-0 flex">';
+  let html = '<div class="flex overflow-x-auto sm:overflow-visible gap-0 rounded-xl h-20 sm:h-16 border border-gray-200 dark:border-gray-700 relative scrollbar-hide">';
   hours.forEach(hour => {
     const block = blocks.find(b => {
       const start = parseInt(b.start_time?.split(':')[0] || 0);
@@ -881,9 +881,9 @@ function renderTimeTerrain(blocks) {
       else color = 'bg-accent/30';
     }
     if (hour === currentHour) color = 'bg-warm/40';
-    html += `<div class="flex-1 ${color} border-r border-white/30 dark:border-gray-800/30 relative group"><div class="absolute bottom-0 left-1/2 -translate-x-1/2 text-xs text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">${hour}:00</div></div>`;
+    html += `<div class="flex-shrink-0 w-10 sm:flex-1 ${color} border-r border-white/30 dark:border-gray-800/30 relative flex flex-col items-center justify-end pb-1"><div class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">${hour}</div></div>`;
   });
-  html += `</div><div class="absolute top-2 left-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur px-2 py-1 rounded text-xs font-medium dark:text-white">当前 ${currentHour}:${String(now.getMinutes()).padStart(2,'0')}</div>`;
+  html += `</div><div class="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"><span>已逝</span><span>计划</span><span>完成</span><span>进行中</span></div><div class="absolute top-2 left-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur px-2 py-1 rounded text-xs font-medium dark:text-white">当前 ${currentHour}:${String(now.getMinutes()).padStart(2,'0')}</div>`;
   return html;
 }
 
@@ -1356,13 +1356,13 @@ function renderMicroStart() {
         <select id="micro-step-select" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none"><option value="">-- 整个任务 --</option></select>
       </div>
       <div class="text-center py-8">
-        <div class="relative w-48 h-48 mx-auto mb-6">
-          <svg class="w-full h-full transform -rotate-90"><circle cx="96" cy="96" r="88" stroke="currentColor" stroke-width="8" fill="none" class="text-gray-100 dark:text-gray-700"/>
+        <div class="relative w-40 h-40 sm:w-48 sm:h-48 mx-auto mb-6">
+          <svg class="w-full h-full transform -rotate-90" viewBox="0 0 192 192"><circle cx="96" cy="96" r="88" stroke="currentColor" stroke-width="8" fill="none" class="text-gray-100 dark:text-gray-700"/>
             <circle id="timer-progress" cx="96" cy="96" r="88" stroke="url(#gradient)" stroke-width="8" fill="none" stroke-dasharray="553" stroke-dashoffset="0" stroke-linecap="round" class="timer-circle"/>
             <defs><linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#4F46E5"/><stop offset="100%" style="stop-color:#10B981"/></linearGradient></defs>
           </svg>
           <div class="absolute inset-0 flex flex-col items-center justify-center">
-            <span id="timer-display" class="text-4xl font-bold text-gray-800 dark:text-white">02:00</span>
+            <span id="timer-display" class="text-3xl sm:text-4xl font-bold text-gray-800 dark:text-white">02:00</span>
             <span id="timer-status" class="text-sm text-gray-500 dark:text-gray-400 mt-1">准备开始</span>
           </div>
         </div>
@@ -1511,14 +1511,14 @@ function renderPomodoro() {
         <select id="pomo-task-select" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none"><option value="">-- 自由番茄 --</option></select>
       </div>
       <div class="text-center py-8">
-        <div class="relative w-56 h-56 mx-auto mb-6">
-          <svg class="w-full h-full transform -rotate-90">
+        <div class="relative w-48 h-48 sm:w-56 sm:h-56 mx-auto mb-6">
+          <svg class="w-full h-full transform -rotate-90" viewBox="0 0 224 224">
             <circle cx="112" cy="112" r="100" stroke="currentColor" stroke-width="10" fill="none" class="text-gray-100 dark:text-gray-700"/>
             <circle id="pomo-progress" cx="112" cy="112" r="100" stroke="url(#pomoGradient)" stroke-width="10" fill="none" stroke-dasharray="628" stroke-dashoffset="0" stroke-linecap="round" class="timer-circle"/>
             <defs><linearGradient id="pomoGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#EF4444"/><stop offset="100%" style="stop-color:#F97316"/></linearGradient></defs>
           </svg>
           <div class="absolute inset-0 flex flex-col items-center justify-center">
-            <span id="pomo-display" class="text-5xl font-bold text-gray-800 dark:text-white">25:00</span>
+            <span id="pomo-display" class="text-4xl sm:text-5xl font-bold text-gray-800 dark:text-white">25:00</span>
             <span id="pomo-mode" class="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium">专注时间</span>
             <span id="pomo-round" class="text-xs text-gray-400 dark:text-gray-500 mt-1">第 1 轮</span>
           </div>

@@ -23,13 +23,13 @@ async function renderStats() {
       <!-- 任务完成趋势 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">📈 任务完成趋势</h3>
-        <canvas id="taskTrendChart" style="max-height: 300px;"></canvas>
+        <canvas id="taskTrendChart" style="max-height: 40vh;" class="md:max-h-[300px]"></canvas>
       </div>
 
       <!-- 情绪变化曲线 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">😊 情绪变化曲线</h3>
-        <canvas id="emotionTrendChart" style="max-height: 300px;"></canvas>
+        <canvas id="emotionTrendChart" style="max-height: 40vh;" class="md:max-h-[300px]"></canvas>
       </div>
 
       <!-- 习惯养成热力图 -->
@@ -41,7 +41,7 @@ async function renderStats() {
       <!-- 拖延模式分析 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🧠 拖延模式分析</h3>
-        <canvas id="procrastinationChart" style="max-height: 300px;"></canvas>
+        <canvas id="procrastinationChart" style="max-height: 40vh;" class="md:max-h-[300px]"></canvas>
       </div>
     </div>
 

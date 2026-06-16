@@ -87,6 +87,11 @@
     .gradient-text { background: linear-gradient(135deg, #4F46E5, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
     .dark .glass { background: rgba(30,41,59,0.85); }
+    .glass-card { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border-radius: 1rem; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.2); }
+    .dark .glass-card { background: rgba(30,41,59,0.85); border-color: rgba(255,255,255,0.05); }
+    .btn-primary { display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; background-color: #4F46E5; color: white; border-radius: 0.75rem; font-weight: 500; transition: all 0.2s; min-height: 44px; cursor: pointer; border: none; }
+    .btn-primary:hover { background-color: #4338ca; }
+    .dark .btn-primary:hover { background-color: #4338ca; }
     .step-card { transition: all 0.25s cubic-bezier(0.4,0,0.2,1); }
     .step-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -8px rgba(0,0,0,0.12); }
     .emotion-btn { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
@@ -112,6 +117,10 @@
     @keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
     .modal-content { animation: modalSlide 0.25s cubic-bezier(0.4,0,0.2,1); }
     @keyframes modalSlide { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    .animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.4,0,0.2,1); }
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
   </style>
 
   <!-- 提前设置深色模式，防止闪烁 -->

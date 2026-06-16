@@ -3,54 +3,57 @@
 // ========== 生成成就分享图片 ==========
 async function generateAchievementShare(achievement) {
   const canvas = document.createElement('canvas');
-  canvas.width = 600;
-  canvas.height = 400;
+  const width = Math.min(window.innerWidth * 0.9, 600);
+  const height = Math.min(window.innerHeight * 0.6, 400);
+  const scale = width / 600;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d');
 
   // 背景渐变
-  const gradient = ctx.createLinearGradient(0, 0, 600, 400);
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, '#6366f1');
   gradient.addColorStop(1, '#8b5cf6');
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 600, 400);
+  ctx.fillRect(0, 0, width, height);
 
   // 装饰圆圈
   ctx.globalAlpha = 0.1;
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(500, 80, 120, 0, Math.PI * 2);
+  ctx.arc(width * 0.83, height * 0.2, 120 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(100, 350, 80, 0, Math.PI * 2);
+  ctx.arc(width * 0.17, height * 0.875, 80 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
   // 图标
-  ctx.font = '60px serif';
+  ctx.font = `${60 * scale}px serif`;
   ctx.textAlign = 'center';
-  ctx.fillText(achievement.icon || '🏆', 300, 140);
+  ctx.fillText(achievement.icon || '🏆', width / 2, height * 0.35);
 
   // 成就名称
-  ctx.font = 'bold 28px sans-serif';
+  ctx.font = `bold ${28 * scale}px sans-serif`;
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(achievement.display_name || achievement.name, 300, 200);
+  ctx.fillText(achievement.display_name || achievement.name, width / 2, height * 0.5);
 
   // 描述
-  ctx.font = '18px sans-serif';
+  ctx.font = `${18 * scale}px sans-serif`;
   ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.fillText(achievement.description || '', 300, 240);
+  ctx.fillText(achievement.description || '', width / 2, height * 0.6);
 
   // 积分
   if (achievement.points) {
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = `bold ${20 * scale}px sans-serif`;
     ctx.fillStyle = '#fbbf24';
-    ctx.fillText(`+${achievement.points} 积分`, 300, 280);
+    ctx.fillText(`+${achievement.points} 积分`, width / 2, height * 0.7);
   }
 
   // 底部品牌
-  ctx.font = '14px sans-serif';
+  ctx.font = `${14 * scale}px sans-serif`;
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fillText('周迹 · CBT拖延症干预系统', 300, 370);
+  ctx.fillText('周迹 · CBT拖延症干预系统', width / 2, height * 0.925);
 
   return canvas.toDataURL('image/png');
 }

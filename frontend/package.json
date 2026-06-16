@@ -1,0 +1,19 @@
+{
+  "name": "zhouji-frontend",
+  "version": "2.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node e2e-test.mjs",
+    "test:api": "bash test.sh",
+    "test:all": "npm run test && npm run test:api && npm run test:e2e"
+  },
+  "dependencies": {
+    "playwright": "^1.61.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.0"
+  }
+}

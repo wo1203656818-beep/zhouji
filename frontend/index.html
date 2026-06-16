@@ -19,12 +19,20 @@
     window.__DEPLOY_CONFIG__ = {
       API_BASE_URL: 'https://zhouji-api.wo1203656818.workers.dev'
     };
+    // 全局 HTML 转义函数（所有 JS 文件之前定义，用于 XSS 防护）
+    window.escapeHtml = function(str) {
+      if (!str && str !== 0) return '';
+      var d = document.createElement('div');
+      d.appendChild(document.createTextNode(String(str)));
+      return d.innerHTML;
+    };
   </script>
   
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind CSS (config 必须在 CDN 之前定义) -->
   <script>
-    tailwind.config = {
+    // 修复: tailwind.config 必须在 cdn.tailwindcss.com 加载之前定义
+    // 否则 "tailwind is not defined" 报错
+    window.__tailwind_config = {
       darkMode: 'class',
       theme: {
         extend: {
@@ -40,6 +48,24 @@
           }
         }
       }
+    };
+    // 兼容 cdn.tailwindcss.com 的两种加载方式
+    if (typeof tailwind !== 'undefined' && tailwind.config) {
+      tailwind.config = window.__tailwind_config;
+    }
+  </script>
+  <script>
+    // 为 cdn.tailwindcss.com 提供 tailwind 全局变量
+    // 某些版本的 CDN Play 脚本需要 tailwind 全局已存在
+    window.tailwind = window.tailwind || { config: window.__tailwind_config };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // CDN 加载后的二次确认
+    if (typeof tailwind !== 'undefined' && tailwind.config !== window.__tailwind_config) {
+      tailwind.config = window.__tailwind_config;
+    } else if (typeof tailwind === 'undefined') {
+      console.warn('Tailwind CSS CDN 加载失败，使用备用样式');
     }
   </script>
   
@@ -98,7 +124,7 @@
     })();
   </script>
   
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="/manifest.json">
 </head>
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-300">
   <noscript>
@@ -119,8 +145,13 @@
     </div>
   </div>
 
-  <!-- 加载外部JavaScript文件：先加载diary.js（定义renderDiary），再加载app.js（引用renderDiary） -->
+  <!-- 加载外部JavaScript文件：先加载依赖，再加载主应用 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="diary.js"></script>
+  <script src="stats.js"></script>
+  <script src="assistant.js"></script>
+  <script src="achievement.js"></script>
+  <script src="social.js"></script>
   <script src="app.js"></script>
   
   <script>
@@ -128,7 +159,25 @@
     window.onerror = function(msg, url, line, col, error) {
       var app = document.getElementById('app');
       if (app) {
-        app.innerHTML = '<div style="padding:2rem;text-align:center;font-family:sans-serif;"><h1 style="color:#EF4444;">❌ JavaScript错误</h1><p style="color:#666;margin:1rem 0;">' + (msg || '未知错误') + '</p><p style="color:#999;font-size:12px;">位置: ' + (url || '') + ' 第' + (line || '?') + '行</p><button onclick="location.reload()" style="margin-top:1rem;padding:0.5rem 1rem;background:#4F46E5;color:white;border:none;border-radius:0.5rem;cursor:pointer;">刷新重试</button></div>';
+        // 修复: 使用 textContent 而非 innerHTML，防止 XSS
+        var div = document.createElement('div');
+        div.style.cssText = 'padding:2rem;text-align:center;font-family:sans-serif;';
+        div.innerHTML = '<h1 style="color:#EF4444;">❌ JavaScript错误</h1>';
+        var p1 = document.createElement('p');
+        p1.style.cssText = 'color:#666;margin:1rem 0;';
+        p1.textContent = msg || '未知错误';
+        div.appendChild(p1);
+        var p2 = document.createElement('p');
+        p2.style.cssText = 'color:#999;font-size:12px;';
+        p2.textContent = '位置: ' + (url || '') + ' 第' + (line || '?') + '行';
+        div.appendChild(p2);
+        var btn = document.createElement('button');
+        btn.onclick = function() { location.reload(); };
+        btn.style.cssText = 'margin-top:1rem;padding:0.5rem 1rem;background:#4F46E5;color:white;border:none;border-radius:0.5rem;cursor:pointer;';
+        btn.textContent = '刷新重试';
+        div.appendChild(btn);
+        app.innerHTML = '';
+        app.appendChild(div);
       }
       console.error('Global error:', msg, 'at', url, 'line:', line);
       return false;
@@ -138,7 +187,20 @@
     setTimeout(function() {
       var app = document.getElementById('app');
       if (app && (!app.innerHTML || app.innerHTML.trim() === '')) {
-        app.innerHTML = '<div style="padding:2rem;text-align:center;font-family:sans-serif;"><h1 style="color:#F59E0B;">⏳ 页面加载超时</h1><p style="color:#666;margin:1rem 0;">可能的原因：<br>1. JavaScript执行错误<br>2. API服务器无响应<br>3. 网络连接问题</p><button onclick="location.reload()" style="margin-top:1rem;padding:0.5rem 1rem;background:#4F46E5;color:white;border:none;border-radius:0.5rem;cursor:pointer;">刷新重试</button></div>';
+        var div = document.createElement('div');
+        div.style.cssText = 'padding:2rem;text-align:center;font-family:sans-serif;';
+        div.innerHTML = '<h1 style="color:#F59E0B;">⏳ 页面加载超时</h1>';
+        var p = document.createElement('p');
+        p.style.cssText = 'color:#666;margin:1rem 0;';
+        p.textContent = '可能的原因：\n1. JavaScript执行错误\n2. API服务器无响应\n3. 网络连接问题';
+        div.appendChild(p);
+        var btn = document.createElement('button');
+        btn.onclick = function() { location.reload(); };
+        btn.style.cssText = 'margin-top:1rem;padding:0.5rem 1rem;background:#4F46E5;color:white;border:none;border-radius:0.5rem;cursor:pointer;';
+        btn.textContent = '刷新重试';
+        div.appendChild(btn);
+        app.innerHTML = '';
+        app.appendChild(div);
       }
     }, 5000);
   </script>

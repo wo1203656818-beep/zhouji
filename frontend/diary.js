@@ -4,6 +4,8 @@
 let diaryEntries = [];
 let currentDiaryEntry = null;
 let diaryMediaFiles = [];
+let cbtTemplates = []; // 缓存CBT模板列表
+let currentTemplateFields = []; // 当前模板的字段
 
 // ========== 日记列表页 ==========
 async function renderDiary() {
@@ -67,13 +69,13 @@ async function loadDiaryEntries() {
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:border-primary/30 dark:hover:border-primary/30 transition-all cursor-pointer" onclick="viewDiaryEntry(${entry.id})">
         <div class="flex items-start justify-between mb-3">
           <div class="flex items-center gap-2">
-            <h3 class="font-bold text-gray-800 dark:text-white text-lg">${entry.title}</h3>
-            ${entry.template_type && entry.template_type !== 'free' ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${entry.template_type === 'cbt' ? 'bg-primary/10 text-primary' : entry.template_type === 'gratitude' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}">${entry.template_type === 'cbt' ? 'CBT' : entry.template_type === 'gratitude' ? '感恩' : '反思'}</span>` : ''}
+            <h3 class="font-bold text-gray-800 dark:text-white text-lg">${window.escapeHtml(entry.title)}</h3>
+            ${entry.template_type && entry.template_type !== 'free' ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${entry.template_type === 'cbt' ? 'bg-primary/10 text-primary' : entry.template_type === 'gratitude' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : entry.template_type === 'reflection' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : entry.template_type === 'procrastination' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : entry.template_type === 'anxiety' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}">${entry.template_type === 'cbt' ? 'CBT' : entry.template_type === 'gratitude' ? '感恩' : entry.template_type === 'reflection' ? '反思' : entry.template_type === 'procrastination' ? '拖延分析' : entry.template_type === 'anxiety' ? '焦虑缓解' : entry.template_type}</span>` : ''}
           </div>
           <span class="text-xs text-gray-400">${new Date(entry.created_at).toLocaleDateString('zh-CN')}</span>
         </div>
-        ${entry.content ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-3">${entry.content}</p>` : ''}
-        ${entry.cbt_thought ? `<div class="mb-3 p-3 rounded-lg bg-primary/5 dark:bg-primary/10 border border-primary/20"><p class="text-xs text-gray-600 dark:text-gray-400"><strong>自动思维:</strong> ${entry.cbt_thought.substring(0, 100)}${entry.cbt_thought.length > 100 ? '...' : ''}</p></div>` : ''}
+        ${entry.content ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-3">${window.escapeHtml(entry.content)}</p>` : ''}
+        ${entry.cbt_thought ? `<div class="mb-3 p-3 rounded-lg bg-primary/5 dark:bg-primary/10 border border-primary/20"><p class="text-xs text-gray-600 dark:text-gray-400"><strong>自动思维:</strong> ${window.escapeHtml(entry.cbt_thought.substring(0, 100))}${entry.cbt_thought.length > 100 ? '...' : ''}</p></div>` : ''}
         ${entry.mood ? `
           <div class="flex items-center gap-2 mb-3">
             <span class="text-sm text-gray-500 dark:text-gray-400">心情:</span>
@@ -120,7 +122,7 @@ async function viewDiaryEntry(id) {
             ${currentDiaryEntry.mood ? `<span><i class="fas fa-smile mr-1"></i>${currentDiaryEntry.mood}</span>` : ''}
             ${currentDiaryEntry.weather ? `<span><i class="fas fa-cloud mr-1"></i>${currentDiaryEntry.weather}</span>` : ''}
             ${currentDiaryEntry.location ? `<span><i class="fas fa-map-marker-alt mr-1"></i>${currentDiaryEntry.location}</span>` : ''}
-            ${currentDiaryEntry.template_type && currentDiaryEntry.template_type !== 'free' ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${currentDiaryEntry.template_type === 'cbt' ? 'bg-primary/10 text-primary' : currentDiaryEntry.template_type === 'gratitude' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}">${currentDiaryEntry.template_type === 'cbt' ? 'CBT 思维记录' : currentDiaryEntry.template_type === 'gratitude' ? '感恩日记' : '每日反思'}</span>` : ''}
+            ${currentDiaryEntry.template_type && currentDiaryEntry.template_type !== 'free' ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${currentDiaryEntry.template_type === 'cbt' ? 'bg-primary/10 text-primary' : currentDiaryEntry.template_type === 'gratitude' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : currentDiaryEntry.template_type === 'reflection' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : currentDiaryEntry.template_type === 'procrastination' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : currentDiaryEntry.template_type === 'anxiety' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}">${currentDiaryEntry.template_type === 'cbt' ? 'CBT 思维记录' : currentDiaryEntry.template_type === 'gratitude' ? '感恩日记' : currentDiaryEntry.template_type === 'reflection' ? '每日反思' : currentDiaryEntry.template_type === 'procrastination' ? '拖延分析' : currentDiaryEntry.template_type === 'anxiety' ? '焦虑缓解' : currentDiaryEntry.template_type}</span>` : ''}
           </div>
           ${currentDiaryEntry.content ? `
             <div class="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">${currentDiaryEntry.content}</div>
@@ -220,12 +222,21 @@ function showDiaryModal(entryId = null) {
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">模板类型</label>
-          <select id="diary-template" onchange="toggleCBTFields()" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all">
-            <option value="free" ${(entry?.template_type || 'free') === 'free' ? 'selected' : ''}>自由记录</option>
-            <option value="cbt" ${entry?.template_type === 'cbt' ? 'selected' : ''}>CBT 思维记录</option>
-            <option value="gratitude" ${entry?.template_type === 'gratitude' ? 'selected' : ''}>感恩日记</option>
-            <option value="reflection" ${entry?.template_type === 'reflection' ? 'selected' : ''}>每日反思</option>
-          </select>
+          <div class="flex gap-2">
+            <select id="diary-template" onchange="onTemplateChange()" class="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all">
+              <option value="free" ${(entry?.template_type || 'free') === 'free' ? 'selected' : ''}>自由记录</option>
+              <option value="" disabled>── 系统模板 ──</option>
+              <option value="cbt" ${entry?.template_type === 'cbt' ? 'selected' : ''}>CBT 思维记录</option>
+              <option value="gratitude" ${entry?.template_type === 'gratitude' ? 'selected' : ''}>感恩日记</option>
+              <option value="reflection" ${entry?.template_type === 'reflection' ? 'selected' : ''}>每日反思</option>
+              <option value="procrastination" ${entry?.template_type === 'procrastination' ? 'selected' : ''}>拖延分析</option>
+              <option value="anxiety" ${entry?.template_type === 'anxiety' ? 'selected' : ''}>焦虑缓解</option>
+              <option value="" disabled id="custom-template-divider" style="display:none">── 我的模板 ──</option>
+            </select>
+            <button onclick="showTemplateManager()" class="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary transition-all" title="管理模板">
+              <i class="fas fa-cog"></i>
+            </button>
+          </div>
         </div>
         
         <div>
@@ -235,26 +246,8 @@ function showDiaryModal(entryId = null) {
                  placeholder="今天想记录什么？">
         </div>
         
-        <div id="diary-cbt-fields" style="display: ${(entry?.template_type || 'free') === 'cbt' ? 'block' : 'none'}">
-          <div class="p-4 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20 space-y-3">
-            <h4 class="font-medium text-gray-800 dark:text-white mb-2"><i class="fas fa-brain text-primary mr-2"></i>CBT 思维记录</h4>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">自动思维（当时脑子里在想什么？）</label>
-              <textarea id="diary-cbt-thought" rows="2" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none resize-none text-sm">${entry?.cbt_thought || ''}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">情绪（感受到什么情绪？多强？1-10）</label>
-              <textarea id="diary-cbt-emotion" rows="2" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none resize-none text-sm">${entry?.cbt_emotion || ''}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">行为（你做了什么？或不做什么？）</label>
-              <textarea id="diary-cbt-behavior" rows="2" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none resize-none text-sm">${entry?.cbt_behavior || ''}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">思维重构（更平衡的想法是什么？）</label>
-              <textarea id="diary-cbt-reframe" rows="2" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none resize-none text-sm">${entry?.cbt_reframe || ''}</textarea>
-            </div>
-          </div>
+        <div id="diary-template-fields" style="display: none">
+          <!-- 动态模板字段将在这里渲染 -->
         </div>
         
         <div>
@@ -333,9 +326,15 @@ function showDiaryModal(entryId = null) {
   `;
   
   document.body.appendChild(modal);
+  
+  // 异步加载自定义模板选项
+  loadCustomTemplates();
+  
+  // 如果有编辑时的模板类型，触发字段显示
+  if (entry?.template_type && entry.template_type !== 'free') {
+    setTimeout(() => onTemplateChange(), 200);
+  }
 }
-
-// ========== 处理媒体文件上传 ==========
 async function handleDiaryMediaUpload(input, mediaType) {
   const files = input.files;
   if (!files || !files.length) return;
@@ -396,12 +395,393 @@ function removeDiaryMedia(btn) {
   previewItem.remove();
 }
 
-// ========== 切换 CBT 字段显示 ==========
-function toggleCBTFields() {
+// ========== 模板定义（系统预设） ==========
+const SYSTEM_TEMPLATES = {
+  cbt: {
+    name: 'CBT 思维记录',
+    icon: 'fa-brain',
+    color: 'primary',
+    fields: [
+      { key: 'cbt_thought', label: '自动思维', placeholder: '当时脑子里在想什么？', icon: 'fa-lightbulb' },
+      { key: 'cbt_emotion', label: '情绪感受', placeholder: '感受到什么情绪？多强？1-10', icon: 'fa-heart' },
+      { key: 'cbt_behavior', label: '行为反应', placeholder: '你做了什么？或不做什么？', icon: 'fa-running' },
+      { key: 'cbt_reframe', label: '思维重构', placeholder: '更平衡的想法是什么？', icon: 'fa-sync' }
+    ]
+  },
+  gratitude: {
+    name: '感恩日记',
+    icon: 'fa-star',
+    color: 'green',
+    fields: [
+      { key: 'gratitude_1', label: '今天最感恩的一件事', placeholder: '描述今天让你感到感恩的事情...', icon: 'fa-star' },
+      { key: 'gratitude_2', label: '感恩的人', placeholder: '今天谁让你感到温暖？', icon: 'fa-user-friends' },
+      { key: 'gratitude_3', label: '对自己的感恩', placeholder: '今天有什么值得肯定自己的？', icon: 'fa-hand-holding-heart' },
+      { key: 'gratitude_reflection', label: '感恩感悟', placeholder: '这些感恩让你意识到了什么？', icon: 'fa-feather' }
+    ]
+  },
+  reflection: {
+    name: '每日反思',
+    icon: 'fa-compass',
+    color: 'blue',
+    fields: [
+      { key: 'reflection_good', label: '今天做得好的', placeholder: '今天有什么事做得不错？', icon: 'fa-check-circle' },
+      { key: 'reflection_bad', label: '可以改进的', placeholder: '哪些地方可以做得更好？', icon: 'fa-exclamation-circle' },
+      { key: 'reflection_learn', label: '今天学到的', placeholder: '今天有什么新发现或领悟？', icon: 'fa-graduation-cap' },
+      { key: 'reflection_tomorrow', label: '明天的计划', placeholder: '明天想怎样改进？', icon: 'fa-calendar-check' }
+    ]
+  },
+  procrastination: {
+    name: '拖延分析',
+    icon: 'fa-clock',
+    color: 'orange',
+    fields: [
+      { key: 'proc_task', label: '拖延的任务', placeholder: '你在拖延什么任务？', icon: 'fa-clock' },
+      { key: 'proc_reason', label: '拖延原因', placeholder: '为什么不想做？害怕什么？', icon: 'fa-search' },
+      { key: 'proc_feeling', label: '拖延时的感受', placeholder: '拖延时你有什么感觉？', icon: 'fa-frown' },
+      { key: 'proc_smallest', label: '最小第一步', placeholder: '你能做的最小一步是什么？', icon: 'fa-shoe-prints' },
+      { key: 'proc_commitment', label: '行动承诺', placeholder: '我承诺在___分钟内完成这第一步', icon: 'fa-handshake' }
+    ]
+  },
+  anxiety: {
+    name: '焦虑缓解',
+    icon: 'fa-shield-alt',
+    color: 'purple',
+    fields: [
+      { key: 'anxiety_trigger', label: '焦虑触发点', placeholder: '什么让你感到焦虑？', icon: 'fa-bolt' },
+      { key: 'anxiety_worst', label: '最坏的情况', placeholder: '你担心最坏会怎样？', icon: 'fa-cloud-showers-heavy' },
+      { key: 'anxiety_probability', label: '实际可能性', placeholder: '这种情况真正发生的概率有多大？', icon: 'fa-percentage' },
+      { key: 'anxiety_cope', label: '应对策略', placeholder: '如果真的发生了，你能怎样应对？', icon: 'fa-shield-alt' },
+      { key: 'anxiety_action', label: '当下行动', placeholder: '现在你能做的一件有用的事是什么？', icon: 'fa-play' }
+    ]
+  }
+};
+
+// ========== 加载自定义模板到选择器 ==========
+async function loadCustomTemplates() {
+  try {
+    const data = await api.get('/api/cbt-templates');
+    cbtTemplates = data.templates || [];
+    
+    const select = $('#diary-template');
+    if (!select) return;
+    
+    // 移除旧的自定义选项
+    select.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
+    
+    // 获取自定义模板分组标记
+    const divider = select.querySelector('#custom-template-divider');
+    
+    // 添加用户自定义模板
+    const userTemplates = cbtTemplates.filter(t => !t.is_system);
+    if (userTemplates.length > 0 && divider) {
+      divider.style.display = '';
+      userTemplates.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = 'custom_' + t.id;
+        opt.textContent = '📝 ' + t.name;
+        opt.dataset.custom = 'true';
+        opt.dataset.templateId = t.id;
+        select.insertBefore(opt, divider.nextSibling);
+      });
+    }
+  } catch (err) {
+    console.error('加载自定义模板失败:', err);
+  }
+}
+
+// ========== 模板切换事件 ==========
+async function onTemplateChange() {
   const templateType = $('#diary-template')?.value;
-  const cbtFields = $('#diary-cbt-fields');
-  if (cbtFields) {
-    cbtFields.style.display = templateType === 'cbt' ? 'block' : 'none';
+  const fieldsContainer = $('#diary-template-fields');
+  if (!fieldsContainer) return;
+
+  if (templateType === 'free') {
+    fieldsContainer.style.display = 'none';
+    fieldsContainer.innerHTML = '';
+    currentTemplateFields = [];
+    return;
+  }
+
+  let template = null;
+  let fields = [];
+  let templateName = '';
+  let templateIcon = '';
+  let templateColor = 'primary';
+
+  // 检查是否是自定义模板
+  if (templateType.startsWith('custom_')) {
+    const templateId = parseInt(templateType.replace('custom_', ''));
+    const customTemplate = cbtTemplates.find(t => t.id === templateId);
+    if (customTemplate) {
+      templateName = customTemplate.name;
+      templateIcon = 'fa-puzzle-piece';
+      templateColor = 'indigo';
+      fields = typeof customTemplate.fields === 'string' ? JSON.parse(customTemplate.fields) : (customTemplate.fields || []);
+      // 增加使用次数
+      try { await api.post('/api/cbt-templates/' + templateId + '/use'); } catch(e) {}
+    }
+  } else if (SYSTEM_TEMPLATES[templateType]) {
+    template = SYSTEM_TEMPLATES[templateType];
+    templateName = template.name;
+    templateIcon = template.icon;
+    templateColor = template.color;
+    fields = template.fields;
+  }
+
+  if (!fields.length) {
+    fieldsContainer.style.display = 'none';
+    fieldsContainer.innerHTML = '';
+    currentTemplateFields = [];
+    return;
+  }
+
+  currentTemplateFields = fields;
+
+  // 获取编辑时的已有数据
+  const existingData = {};
+  if (currentDiaryEntry) {
+    fields.forEach(f => {
+      if (currentDiaryEntry[f.key]) existingData[f.key] = currentDiaryEntry[f.key];
+    });
+  }
+
+  // 渲染动态字段
+  const colorMap = {
+    primary: 'bg-primary/5 dark:bg-primary/10 border-primary/20',
+    green: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800',
+    blue: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
+    orange: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800',
+    purple: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800',
+    indigo: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+  };
+  const iconColorMap = {
+    primary: 'text-primary',
+    green: 'text-green-600 dark:text-green-400',
+    blue: 'text-blue-600 dark:text-blue-400',
+    orange: 'text-orange-600 dark:text-orange-400',
+    purple: 'text-purple-600 dark:text-purple-400',
+    indigo: 'text-indigo-600 dark:text-indigo-400'
+  };
+
+  fieldsContainer.innerHTML = `
+    <div class="p-4 rounded-xl ${colorMap[templateColor] || colorMap.primary} border ${templateColor === 'primary' ? 'border-primary/20' : ''} space-y-3">
+      <h4 class="font-medium text-gray-800 dark:text-white mb-2"><i class="fas ${templateIcon} ${iconColorMap[templateColor] || iconColorMap.primary} mr-2"></i>${templateName}</h4>
+      ${fields.map(f => `
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">${f.icon ? '<i class="fas ' + f.icon + ' mr-1"></i>' : ''}${f.label}</label>
+          <textarea id="diary-field-${f.key}" rows="2" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none resize-none text-sm" placeholder="${f.placeholder || ''}">${existingData[f.key] || ''}</textarea>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  fieldsContainer.style.display = 'block';
+}
+
+// ========== 显示模板管理器 ==========
+async function showTemplateManager() {
+  // 先加载模板
+  try {
+    const data = await api.get('/api/cbt-templates');
+    cbtTemplates = data.templates || [];
+  } catch(e) {
+    cbtTemplates = [];
+  }
+
+  const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop');
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-content">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-xl font-bold text-gray-800 dark:text-white"><i class="fas fa-puzzle-piece text-primary mr-2"></i>模板管理</h3>
+        <button onclick="this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      
+      <!-- 系统预设模板 -->
+      <div class="mb-6">
+        <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wide">系统预设模板</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ${Object.entries(SYSTEM_TEMPLATES).map(([key, t]) => `
+            <div class="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-primary/50 dark:hover:border-primary/50 transition-all cursor-pointer" onclick="useTemplate('${key}')">
+              <div class="flex items-center gap-2 mb-1">
+                <i class="fas ${t.icon} text-primary"></i>
+                <span class="font-medium text-gray-800 dark:text-white">${t.name}</span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">${t.fields.length} 个字段</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <!-- 用户自定义模板 -->
+      <div class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">我的自定义模板</h4>
+          <button onclick="showCreateTemplateForm()" class="text-sm text-primary font-medium hover:underline">
+            <i class="fas fa-plus mr-1"></i>创建模板
+          </button>
+        </div>
+        <div id="custom-templates-list">
+          ${cbtTemplates.filter(t => !t.is_system).length === 0 ? `
+            <div class="text-center py-6 text-gray-400 dark:text-gray-500">
+              <i class="fas fa-file-alt text-2xl mb-2"></i>
+              <p class="text-sm">还没有自定义模板</p>
+            </div>
+          ` : cbtTemplates.filter(t => !t.is_system).map(t => `
+            <div class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 mb-2 hover:border-primary/50 transition-all">
+              <i class="fas fa-puzzle-piece text-indigo-500"></i>
+              <div class="flex-1 min-w-0">
+                <p class="font-medium text-gray-800 dark:text-white text-sm">${t.name}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">${t.description || '自定义模板'} · 使用 ${t.use_count || 0} 次</p>
+              </div>
+              <div class="flex gap-1">
+                <button onclick="useTemplate('custom_${t.id}')" class="px-2 py-1 rounded-lg text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">使用</button>
+                <button onclick="deleteCustomTemplate(${t.id})" class="px-2 py-1 rounded-lg text-xs bg-danger/10 text-danger hover:bg-danger/20 transition-all touch-btn">删除</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <!-- 创建模板表单 -->
+      <div id="create-template-form" style="display: none" class="p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 space-y-4">
+        <h4 class="font-medium text-gray-800 dark:text-white"><i class="fas fa-plus-circle text-primary mr-2"></i>创建自定义模板</h4>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">模板名称</label>
+          <input type="text" id="new-template-name" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm" placeholder="例如：情绪急救">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">模板描述</label>
+          <input type="text" id="new-template-desc" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm" placeholder="简短描述模板用途">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">模板字段</label>
+          <div id="new-template-fields" class="space-y-2">
+            <div class="flex gap-2 items-center">
+              <input type="text" placeholder="字段名" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-label">
+              <input type="text" placeholder="提示文字" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-placeholder">
+              <button onclick="this.closest('div').remove()" class="px-2 py-1 text-danger hover:bg-danger/10 rounded-lg transition-all"><i class="fas fa-times"></i></button>
+            </div>
+          </div>
+          <button onclick="addTemplateField()" class="mt-2 text-sm text-primary font-medium hover:underline">
+            <i class="fas fa-plus mr-1"></i>添加字段
+          </button>
+        </div>
+        <div class="flex gap-2 justify-end">
+          <button onclick="document.getElementById('create-template-form').style.display='none'" class="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-sm touch-btn">取消</button>
+          <button onclick="saveNewTemplate()" class="px-4 py-2 rounded-xl bg-primary text-white font-medium text-sm hover:bg-primary/90 transition-all touch-btn">保存模板</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+// ========== 使用模板（从模板管理器） ==========
+function useTemplate(templateKey) {
+  // 关闭模板管理器
+  document.querySelector('.modal-backdrop')?.remove();
+  
+  // 设置选择器并触发切换
+  const select = $('#diary-template');
+  if (select) {
+    select.value = templateKey;
+    onTemplateChange();
+  }
+}
+
+// ========== 添加模板字段 ==========
+function addTemplateField() {
+  const container = document.getElementById('new-template-fields');
+  if (!container) return;
+  
+  const fieldDiv = document.createElement('div');
+  fieldDiv.className = 'flex gap-2 items-center';
+  fieldDiv.innerHTML = `
+    <input type="text" placeholder="字段名" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-label">
+    <input type="text" placeholder="提示文字" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-placeholder">
+    <button onclick="this.closest('div').remove()" class="px-2 py-1 text-danger hover:bg-danger/10 rounded-lg transition-all"><i class="fas fa-times"></i></button>
+  `;
+  container.appendChild(fieldDiv);
+}
+
+// ========== 显示创建模板表单 ==========
+function showCreateTemplateForm() {
+  const form = document.getElementById('create-template-form');
+  if (form) form.style.display = 'block';
+}
+
+// ========== 保存新模板 ==========
+async function saveNewTemplate() {
+  const name = document.getElementById('new-template-name')?.value?.trim();
+  const desc = document.getElementById('new-template-desc')?.value?.trim();
+  
+  if (!name) {
+    showToast('请输入模板名称', 'error');
+    return;
+  }
+  
+  // 收集字段
+  const fields = [];
+  const labels = document.querySelectorAll('.tpl-field-label');
+  const placeholders = document.querySelectorAll('.tpl-field-placeholder');
+  
+  labels.forEach((labelInput, i) => {
+    const label = labelInput.value?.trim();
+    if (label) {
+      fields.push({
+        key: 'custom_' + Date.now() + '_' + i,
+        label: label,
+        placeholder: placeholders[i]?.value?.trim() || '',
+        icon: 'fa-pen'
+      });
+    }
+  });
+  
+  if (fields.length === 0) {
+    showToast('请至少添加一个字段', 'error');
+    return;
+  }
+  
+  try {
+    await api.post('/api/cbt-templates', {
+      name,
+      description: desc,
+      template_type: 'custom',
+      fields
+    });
+    
+    showToast('模板创建成功');
+    
+    // 重新加载模板列表
+    await loadCustomTemplates();
+    
+    // 关闭模板管理器并重新打开
+    document.querySelector('.modal-backdrop')?.remove();
+    showTemplateManager();
+  } catch (err) {
+    showToast(err.message || '创建失败', 'error');
+  }
+}
+
+// ========== 删除自定义模板 ==========
+async function deleteCustomTemplate(id) {
+  var confirmed = window.showConfirmModal ? await window.showConfirmModal('确定要删除这个自定义模板吗？', '删除') : confirm('确定要删除这个自定义模板吗？');
+  if (!confirmed) return;
+  
+  try {
+    await api.del('/api/cbt-templates/' + id);
+    showToast('模板已删除');
+    
+    // 重新加载
+    await loadCustomTemplates();
+    
+    // 刷新模板管理器
+    document.querySelector('.modal-backdrop')?.remove();
+    showTemplateManager();
+  } catch (err) {
+    showToast(err.message || '删除失败', 'error');
   }
 }
 
@@ -413,10 +793,6 @@ async function saveDiaryEntry(entryId = null) {
   const weather = $('#diary-weather')?.value?.trim();
   const location = $('#diary-location')?.value?.trim();
   const templateType = $('#diary-template')?.value || 'free';
-  const cbtThought = $('#diary-cbt-thought')?.value?.trim();
-  const cbtEmotion = $('#diary-cbt-emotion')?.value?.trim();
-  const cbtBehavior = $('#diary-cbt-behavior')?.value?.trim();
-  const cbtReframe = $('#diary-cbt-reframe')?.value?.trim();
   
   if (!title) {
     showToast('请输入标题', 'error');
@@ -430,15 +806,19 @@ async function saveDiaryEntry(entryId = null) {
       mood,
       weather,
       location,
-      template_type: templateType,
+      template_type: templateType === 'free' ? 'free' : templateType,
       media: diaryMediaFiles
     };
     
-    if (templateType === 'cbt') {
-      data.cbt_thought = cbtThought;
-      data.cbt_emotion = cbtEmotion;
-      data.cbt_behavior = cbtBehavior;
-      data.cbt_reframe = cbtReframe;
+    // 收集模板字段数据
+    if (templateType !== 'free') {
+      currentTemplateFields.forEach(f => {
+        const fieldEl = document.getElementById('diary-field-' + f.key);
+        if (fieldEl) {
+          data[f.key] = fieldEl.value?.trim() || '';
+        }
+      });
+      // <- 向后兼容注释删除
     }
     
     if (entryId && entryId !== 'null') {
@@ -447,6 +827,11 @@ async function saveDiaryEntry(entryId = null) {
     } else {
       await api.post('/api/diary', data);
       showToast('日记已发布');
+    }
+    
+    // 自动检查成就
+    if (typeof autoCheckAchievements === 'function') {
+      autoCheckAchievements();
     }
     
     diaryMediaFiles = [];
@@ -465,7 +850,8 @@ async function editDiaryEntry(id) {
 
 // ========== 删除日记 ==========
 async function deleteDiaryEntry(id) {
-  if (!confirm('确定要删除这篇日记吗？')) return;
+  var confirmed = window.showConfirmModal ? await window.showConfirmModal('确定要删除这篇日记吗？', '删除') : confirm('确定要删除这篇日记吗？');
+  if (!confirmed) return;
   
   try {
     await api.del('/api/diary/' + id);
@@ -486,4 +872,11 @@ window.removeDiaryMedia = removeDiaryMedia;
 window.saveDiaryEntry = saveDiaryEntry;
 window.editDiaryEntry = editDiaryEntry;
 window.deleteDiaryEntry = deleteDiaryEntry;
-window.toggleCBTFields = toggleCBTFields;
+window.onTemplateChange = onTemplateChange;
+window.loadCustomTemplates = loadCustomTemplates;
+window.showTemplateManager = showTemplateManager;
+window.useTemplate = useTemplate;
+window.addTemplateField = addTemplateField;
+window.showCreateTemplateForm = showCreateTemplateForm;
+window.saveNewTemplate = saveNewTemplate;
+window.deleteCustomTemplate = deleteCustomTemplate;

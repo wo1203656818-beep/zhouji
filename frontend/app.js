@@ -66,12 +66,6 @@ function getApiBase() {
   // 3. 返回空，需要在登录页手动配置
   return '';
 }
-// 兼容旧代码的常量引用（指向函数调用结果，但关键路径使用 getApiBase()）
-const API_BASE = getApiBase();
-// 修复 FE-005: 如果未设置 API_BASE，显示配置提示
-if (!API_BASE && window.location.hash !== '#/login') {
-  console.warn('API_BASE 未设置，请在登录页面配置后端地址');
-}
 const DARK_MODE = safeStorage.get('dark_mode') === 'true';
 
 // 初始化深色模式
@@ -90,12 +84,119 @@ const el = (tag, cls = '', html = '') => {
 // 防抖
 function debounce(fn, ms = 300) {
   let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
 }
 
-// Loading 控制
-function showLoading() { $('#loading')?.classList.remove('hidden'); }
-function hideLoading() { $('#loading')?.classList.add('hidden'); }
+// 安全 HTML 转义（修复 XSS: 用户内容渲染）
+function escapeHtml(str) {
+  if (!str && str !== 0) return '';
+  var d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(str)));
+  return d.innerHTML;
+}
+
+// 自定义确认弹窗（替换 confirm()，支持键盘操作和焦点管理）
+function showConfirmModal(msg, confirmText, cancelText) {
+  return new Promise(function(resolve) {
+    var previousActive = document.activeElement;
+    var backdrop = el('div', 'fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 modal-backdrop');
+    backdrop.setAttribute('role', 'alertdialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.innerHTML = '<div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl modal-content">' +
+      '<p class="text-gray-800 dark:text-gray-200 mb-6">' + escapeHtml(msg) + '</p>' +
+      '<div class="flex gap-3 justify-end">' +
+      '<button id="modal-cancel-btn" class="px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all font-medium touch-btn">' + escapeHtml(cancelText || '取消') + '</button>' +
+      '<button id="modal-confirm-btn" class="px-4 py-2 rounded-xl bg-danger text-white hover:bg-danger/90 transition-all font-medium touch-btn">' + escapeHtml(confirmText || '确定') + '</button>' +
+      '</div></div>';
+    document.body.appendChild(backdrop);
+    // 焦点自动到确认按钮
+    setTimeout(function() { document.getElementById('modal-confirm-btn').focus(); }, 50);
+    function close(result) {
+      backdrop.remove();
+      if (previousActive && previousActive.focus) previousActive.focus();
+      resolve(result);
+    }
+    document.getElementById('modal-confirm-btn').onclick = function() { close(true); };
+    document.getElementById('modal-cancel-btn').onclick = function() { close(false); };
+    backdrop.onclick = function(e) { if (e.target === backdrop) close(false); };
+    // Escape 关闭
+    var keyHandler = function(e) { if (e.key === 'Escape') { close(false); document.removeEventListener('keydown', keyHandler); } };
+    document.addEventListener('keydown', keyHandler);
+    // Tab 焦点循环
+    backdrop.addEventListener('keydown', function(e) {
+      if (e.key === 'Tab') {
+        var focusable = backdrop.querySelectorAll('button');
+        if (focusable.length < 2) return;
+        if (e.shiftKey && document.activeElement === focusable[0]) {
+          e.preventDefault();
+          focusable[focusable.length - 1].focus();
+        } else if (!e.shiftKey && document.activeElement === focusable[focusable.length - 1]) {
+          e.preventDefault();
+          focusable[0].focus();
+        }
+      }
+    });
+  });
+}
+
+// 删除操作带撤销提示
+function showDeleteUndo(msg, undoFn) {
+  var toast = el('div', 'toast-notification fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 px-4 py-3 rounded-xl shadow-lg z-[100] bg-gray-800 text-white fade-in flex items-center gap-3');
+  toast.setAttribute('role', 'alert');
+  toast.innerHTML = '<span class="text-sm">' + escapeHtml(msg || '已删除') + '</span>' +
+    '<button class="px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-sm font-medium transition-all touch-btn">撤销</button>';
+  document.body.appendChild(toast);
+  toast.querySelector('button').onclick = function() {
+    undoFn();
+    toast.remove();
+  };
+  setTimeout(function() { if (toast.parentNode) { toast.style.opacity = '0'; setTimeout(function() { if (toast.parentNode) toast.remove(); }, 300); } }, 5000);
+}
+
+// 模态框焦点管理（在所有模态框创建后调用）
+function setupModalFocusTrap(modal, onClose) {
+  if (!modal) return;
+  var previousActive = document.activeElement;
+  var focusable = modal.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (focusable.length > 0) setTimeout(function() { focusable[0].focus(); }, 50);
+  // Escape 关闭
+  var keyHandler = function(e) {
+    if (e.key === 'Escape') { closeModal(); }
+    // Tab 循环
+    if (e.key === 'Tab' && focusable.length > 1) {
+      if (e.shiftKey && document.activeElement === focusable[0]) {
+        e.preventDefault(); focusable[focusable.length - 1].focus();
+      } else if (!e.shiftKey && document.activeElement === focusable[focusable.length - 1]) {
+        e.preventDefault(); focusable[0].focus();
+      }
+    }
+  };
+  document.addEventListener('keydown', keyHandler);
+  function closeModal() {
+    document.removeEventListener('keydown', keyHandler);
+    if (previousActive && previousActive.focus) previousActive.focus();
+    if (onClose) onClose();
+  }
+  // 拦截 backdrop 点击关闭
+  modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+  return closeModal;
+}
+
+// 加载失败时显示内联重试按钮
+function showErrorWithRetry(containerId, retryFn, msg) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-8 text-gray-400 dark:text-gray-500">' +
+    '<i class="fas fa-exclamation-triangle text-3xl mb-3 text-danger/60"></i>' +
+    '<p class="mb-3">' + escapeHtml(msg || '加载失败') + '</p>' +
+    '<button onclick="' + retryFn + '()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn">' +
+    '<i class="fas fa-redo mr-1"></i>重试</button></div>';
+}
+
+// Loading 控制（引用计数，防止快速切换时闪烁）
+let loadingCounter = 0;
+function showLoading() { loadingCounter++; $('#loading')?.classList.remove('hidden'); }
+function hideLoading() { loadingCounter = Math.max(0, loadingCounter - 1); if (loadingCounter === 0) $('#loading')?.classList.add('hidden'); }
 
 // API 封装（带 loading 和错误处理）
 const api = {
@@ -261,8 +362,9 @@ const routes = {
   'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
   'time-blocks': renderTimeBlocks,
   'diary': function() { return (window.renderDiary || renderDiary).apply(this, arguments); },
-};
-  'commitments': renderCommitments, 'time-blocks': renderTimeBlocks,
+  'stats': function() { return (window.renderStats || renderStats).apply(this, arguments); },
+  'assistant': function() { return (window.renderAssistant || renderAssistant).apply(this, arguments); },
+  'achievements': function() { return (window.renderAchievements || renderAchievements).apply(this, arguments); },
   'settings': renderSettings
 };
 
@@ -275,7 +377,11 @@ function navigate(page, params = {}) {
   // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
   _navigateHash = hashPath;
   window.location.hash = hashPath;
-  window.scrollTo(0, 0);  // 修复 FE-020: 切换路由时滚动到顶部
+  // 修复: 导航时平滑滚动到顶部，不影响浏览器前进/后退
+  if (!window._isBackForward) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  window._isBackForward = false;
   render();
 }
 
@@ -295,10 +401,26 @@ async function render() {
   if (token && page === 'login') { navigate('dashboard'); return; }
 
   const renderer = routes[page] || renderDashboard;
-  app.innerHTML = '';
+  
+  // 修复: 页面过渡动画 — 先淡出再渲染
+  if (state.currentPage && state.currentPage !== page) {
+    app.style.opacity = '0';
+    app.style.transform = 'translateY(8px)';
+    app.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+    // 不阻塞，直接继续渲染
+  }
 
   // 修复 Bug6: await 渲染结果，兼容 sync/async 渲染函数
   const content = await renderer();
+  
+  // 修复: 清除旧内容并用淡入显示新内容
+  app.innerHTML = '';
+  // 淡入新页面
+  setTimeout(function() {
+    app.style.opacity = '1';
+    app.style.transform = 'translateY(0)';
+  }, 10);
+  
   if (page !== 'login') {
     app.appendChild(renderNav());
     const main = el('main', 'pb-20 md:pb-0 md:ml-64 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors');
@@ -313,7 +435,7 @@ async function render() {
 
 // 导航栏
 function renderNav() {
-  const nav = el('nav', 'fixed bottom-0 left-0 right-0 md:fixed md:top-0 md:left-0 md:bottom-0 md:w-64 bg-white dark:bg-gray-800 md:border-r border-gray-200 dark:border-gray-700 z-50 shadow-lg md:shadow-none transition-colors');
+  const nav = el('nav', 'fixed bottom-0 left-0 right-0 md:fixed md:top-0 md:left-0 md:bottom-0 md:w-64 bg-white dark:bg-gray-800 md:border-r border-gray-200 dark:border-gray-700 z-40 shadow-lg md:shadow-none transition-colors');
 
   const items = [
     { id: 'dashboard', icon: 'fa-chart-line', label: '仪表盘' },
@@ -325,6 +447,9 @@ function renderNav() {
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
+    { id: 'stats', icon: 'fa-chart-bar', label: '数据可视化' },
+    { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
+    { id: 'achievements', icon: 'fa-trophy', label: '成就' },
   ];
   const current = state.currentPage;
 
@@ -521,22 +646,26 @@ function getPriorityStyle(priority) {
   return map[priority] || 'bg-gray-100 text-gray-700';
 }
 
-function showToast(message, type) {
-  if (type === void 0) { type = 'success'; }
-  var existing = document.querySelector('.toast-notification');
-  if (existing) {
-    if (existing.dataset.message === message && existing.dataset.type === type) {
-      return;
-    }
-    existing.remove();
-  }
+function showToast(message, type = 'success') {
+  // 同一条消息不重复显示
+  var existing = document.querySelector('.toast-notification[data-message="' + escapeHtml(message) + '"][data-type="' + escapeHtml(type) + '"]');
+  if (existing) return;
+
   const colors = { success: 'bg-secondary text-white', error: 'bg-danger text-white', warning: 'bg-accent text-white', info: 'bg-calm text-white' };
-  var toast = el('div', 'toast-notification fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg z-[100] ' + colors[type] + ' fade-in flex items-center gap-2');
+  var toast = el('div', 'toast-notification fixed top-4 md:top-4 bottom-20 md:bottom-auto left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg z-[100] ' + colors[type] + ' fade-in flex items-center gap-2');
   toast.dataset.message = message;
   toast.dataset.type = type;
-  toast.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':type==='error'?'exclamation-circle':'info-circle'}"></i><span class="font-medium">${message}</span>`;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'polite');
+  var icon = type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle';
+  toast.innerHTML = '<i class="fas fa-' + icon + '"></i><span class="font-medium">' + escapeHtml(message) + '</span>';
   document.body.appendChild(toast);
-  setTimeout(() => { toast.style.opacity='0'; toast.style.transform='translateX(-50%) translateY(-10px)'; setTimeout(()=>toast.remove(),300); }, 3000);
+  // 3秒后自动移除
+  setTimeout(function() {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(-10px)';
+    setTimeout(function() { toast.remove(); }, 300);
+  }, 3000);
 }
 
 // ========== 仪表盘 ==========
@@ -684,10 +813,10 @@ async function renderDashboard() {
             <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-exclamation-circle text-accent"></i> 即将到期</h3>
             <div class="space-y-3">
               ${data.upcomingTasks.map(task => `
-                <div class="flex items-center gap-3 p-3 rounded-xl ${new Date(task.due_date) < new Date() ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50 dark:bg-gray-700/50'}">
+                <div class="flex items-center gap-3 p-3 rounded-xl ${new Date(task.due_date + 'T23:59:59') < new Date() ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50 dark:bg-gray-700/50'}">
                   <div class="flex-1 min-w-0">
                     <p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${task.title}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date) < new Date() ? ' ⚠️ 已过期' : ' ⏰ 即将到期'}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date + 'T23:59:59') < new Date() ? ' ⚠️ 已过期' : ' ⏰ 即将到期'}</p>
                   </div>
                   <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-3 py-1.5 rounded-lg text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">查看</button>
                 </div>
@@ -720,7 +849,11 @@ async function renderDashboard() {
       </div>
     `;
   } catch (err) {
-    div.innerHTML = `<div class="p-8 text-center text-danger">加载失败: ${err.message}</div>`;
+    div.innerHTML = '<div class="p-8 text-center text-danger">' +
+      '<i class="fas fa-exclamation-triangle text-3xl mb-3"></i>' +
+      '<p class="mb-2">加载失败</p>' +
+      '<button onclick="renderDashboard()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn mt-2">' +
+      '<i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
   return div;
 }
@@ -821,6 +954,10 @@ async function saveEmotion() {
   try {
     await api.post('/api/emotions', { emotion_type: selectedEmotion, energy_level: selectedEnergy, trigger_task: '', cbt_response: getEmotionCBT(selectedEmotion) });
     showToast('情绪已记录，去启动一个任务吧！');
+    // 自动检查成就
+    if (typeof autoCheckAchievements === 'function') {
+      autoCheckAchievements();
+    }
     navigate('dashboard');
   } catch (err) { showToast(err.message, 'error'); }
 }
@@ -905,13 +1042,13 @@ async function loadTasks() {
           <div class="flex gap-2">
             <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-3 py-1.5 rounded-lg text-sm bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">拆解</button>
             ${task.status !== 'completed' ? `<button onclick="quickMicroStart(${task.id})" class="px-3 py-1.5 rounded-lg text-sm bg-secondary/10 text-secondary hover:bg-secondary/20 transition-all touch-btn">启动</button>` : ''}
-            <button onclick="deleteTask(${task.id})" class="px-3 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all touch-btn"><i class="fas fa-trash"></i></button>
+            <button onclick="deleteTask(${task.id})" aria-label="删除任务" class="px-3 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all touch-btn"><i class="fas fa-trash"></i></button>
           </div>
         </div>
       </div>
     `).join('');
   } catch (err) {
-    $('#tasks-list').innerHTML = `<div class="text-center py-12 text-danger">加载失败: ${err.message}</div>`;
+    $('#tasks-list').innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTasks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
 }
 
@@ -939,7 +1076,7 @@ function showTaskTemplates() {
     <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg p-6 modal-content shadow-2xl border border-gray-100 dark:border-gray-700">
       <div class="flex items-center justify-between mb-6">
         <h3 class="font-bold text-xl text-gray-800 dark:text-white">任务模板</h3>
-        <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
+        <button onclick="this.closest('.fixed').remove()" aria-label="关闭" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
       </div>
       <div class="space-y-3 max-h-96 overflow-y-auto">
         ${taskTemplates.map((t, i) => `
@@ -980,7 +1117,7 @@ function showTaskModal() {
     <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg p-6 modal-content shadow-2xl border border-gray-100 dark:border-gray-700">
       <div class="flex items-center justify-between mb-6">
         <h3 class="font-bold text-xl text-gray-800 dark:text-white">新建任务</h3>
-        <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
+        <button onclick="this.closest('.fixed').remove()" aria-label="关闭" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
       </div>
       <div class="space-y-4">
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">任务标题</label>
@@ -1028,8 +1165,9 @@ async function createTask() {
 }
 
 async function deleteTask(id) {
-  if (!confirm('确定要删除这个任务吗？所有相关数据也会被删除。')) return;
-  try { await api.del(`/api/tasks/${id}`); showToast('任务已删除'); loadTasks(); }
+  var confirmed = await showConfirmModal('确定要删除这个任务吗？所有相关数据也会被删除。', '删除');
+  if (!confirmed) return;
+  try { await api.del(`/api/tasks/${id}`); showDeleteUndo('任务已删除', function() { /* 无后端撤销，至少 UI 提醒 */ }); loadTasks(); }
   catch (err) { showToast(err.message, 'error'); }
 }
 
@@ -1053,8 +1191,8 @@ async function renderTaskDetail() {
     div.innerHTML = `
       <div class="mb-6">
         <button onclick="navigate('tasks')" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2 flex items-center gap-1"><i class="fas fa-arrow-left"></i>返回</button>
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-white">${task.title}</h2>
-        <p class="text-gray-500 dark:text-gray-400">${task.description || '无描述'}</p>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-white">${escapeHtml(task.title)}</h2>
+        <p class="text-gray-500 dark:text-gray-400">${escapeHtml(task.description || '无描述')}</p>
       </div>
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
         <div class="flex flex-wrap gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -1069,7 +1207,7 @@ async function renderTaskDetail() {
             <button onclick="updateTaskStatus(${taskId}, 'completed')" class="flex-1 bg-secondary text-white py-2 rounded-xl font-medium hover:bg-secondary/90 transition-all touch-btn"><i class="fas fa-check mr-1"></i>标记完成</button>
             <button onclick="startStepMicro(${taskId})" class="px-4 py-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn"><i class="fas fa-play"></i></button>
           ` : `<button onclick="updateTaskStatus(${taskId}, 'pending')" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-2 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all touch-btn"><i class="fas fa-undo mr-1"></i>重新打开</button>`}
-          <button onclick="deleteTask(${taskId}); navigate('tasks')" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
+          <button onclick="deleteTask(${taskId}); navigate('tasks')" aria-label="删除任务" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
         </div>
       </div>
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
@@ -1118,12 +1256,20 @@ async function renderTaskDetail() {
         <p class="text-sm text-gray-600 dark:text-gray-400">如果任务让你感到抗拒，试着把它拆成更小的步骤。每个步骤应该能在2分钟内开始。</p>
       </div>
     `;
-  } catch (err) { div.innerHTML = `<div class="text-center py-12 text-danger">加载失败: ${err.message}</div>`; }
+  } catch (err) { div.innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="renderMicroStart()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>'; }
   return div;
 }
 
 async function updateTaskStatus(id, status) {
-  try { await api.put(`/api/tasks/${id}`, { status }); showToast(status === 'completed' ? '任务已完成！' : '任务已重新打开'); navigate('task-detail', { id }); }
+  try { 
+    await api.put(`/api/tasks/${id}`, { status }); 
+    showToast(status === 'completed' ? '任务已完成！' : '任务已重新打开'); 
+    // 自动检查成就
+    if (typeof autoCheckAchievements === 'function') {
+      autoCheckAchievements();
+    }
+    navigate('task-detail', { id }); 
+  }
   catch (err) { showToast(err.message, 'error'); }
 }
 async function updateTaskPriority(taskId, priority) {
@@ -1177,7 +1323,7 @@ function showPriorityModal(taskId, currentPriority) {
     <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 modal-content shadow-2xl border border-gray-100 dark:border-gray-700">
       <div class="flex items-center justify-between mb-6">
         <h3 class="font-bold text-xl text-gray-800 dark:text-white">设置优先级</h3>
-        <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
+        <button onclick="this.closest('.fixed').remove()" aria-label="关闭" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times text-xl"></i></button>
       </div>
       <div class="space-y-3">
         ${[1,2,3,4,5].map(p => `
@@ -1267,6 +1413,8 @@ async function onMicroTaskChange() {
 
 timerStartTime = null; // timerInterval/timerSeconds/timerTotal/timerRunning 已在全局声明
 function resumeTimerUI() {
+  // 修复: 恢复前先清除可能残留的旧 interval
+  if (timerInterval) clearInterval(timerInterval);
   $('#timer-btn-start').classList.add('hidden');
   $('#timer-btn-stop').classList.remove('hidden');
   $('#timer-btn-done').classList.remove('hidden');
@@ -1291,7 +1439,7 @@ function resumeTimerUI() {
       showToast('2分钟契约已完成！🎉'); 
       safeStorage.remove('timer_state'); 
     }
-  }, 100);  // 每 100ms 检查一次，更精确
+  }, 1000);  // 优化: 秒级精度, 每秒更新一次
 }
 function startTimer() {
   const taskId = $('#micro-task-select').value;
@@ -1321,6 +1469,10 @@ async function finishTimer(continued) {
   try {
     await api.post('/api/micro-starts', { task_id: taskId ? parseInt(taskId) : null, step_id: stepId ? parseInt(stepId) : null, planned_duration: 2, actual_duration: actualDuration, continued_after_contract: continued });
     showToast(continued ? '太棒了！你选择了继续！' : '很好，你完成了契约！');
+    // 自动检查成就
+    if (typeof autoCheckAchievements === 'function') {
+      autoCheckAchievements();
+    }
     timerSeconds = timerTotal; updateTimerDisplay();
     $('#timer-btn-start').classList.remove('hidden'); $('#timer-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>开始契约';
     $('#timer-btn-stop').classList.add('hidden'); $('#timer-btn-done').classList.add('hidden');
@@ -1437,7 +1589,7 @@ function startPomodoro() {
       pomoRunning = false;
       completePomodoroRound();
     }
-  }, 100);  // 每 100ms 检查一次，更精确
+  }, 1000);  // 优化: 秒级精度, 每秒更新一次
 }
 
 function pausePomodoro() {
@@ -1479,6 +1631,10 @@ async function completePomodoroRound(skipped = false) {
     try {
       await api.post('/api/pomodoro', { task_id: taskId ? parseInt(taskId) : null, duration: Math.max(1, duration), completed: 1 });
       showToast('🍅 番茄完成！休息一下吧');
+      // 自动检查成就
+      if (typeof autoCheckAchievements === 'function') {
+        autoCheckAchievements();
+      }
       updatePomoStats();
       loadPomodoroHistory();
     } catch (err) { console.error(err); }
@@ -1684,12 +1840,12 @@ async function loadCommitments() {
         <div class="flex gap-2">
           ${!c.completed ? `<button onclick="recordRelapse(${c.id})" class="flex-1 bg-red-50 dark:bg-red-900/20 text-danger py-2 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-times-circle mr-1"></i>记录破戒</button>` : ''}
           ${!c.completed ? `<button onclick="completeCommitment(${c.id})" class="flex-1 bg-secondary/10 text-secondary py-2 rounded-xl text-sm font-medium hover:bg-secondary/20 transition-all touch-btn"><i class="fas fa-check mr-1"></i>标记完成</button>` : `<button onclick="completeCommitment(${c.id}, false)" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all touch-btn"><i class="fas fa-undo mr-1"></i>撤销</button>`}
-          <button onclick="deleteCommitment(${c.id})" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
+          <button onclick="deleteCommitment(${c.id})" aria-label="删除承诺" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
         </div>
       </div>
     `).join('');
   } catch (err) {
-    $('#commitments-list').innerHTML = `<div class="text-center py-12 text-danger">加载失败: ${err.message}</div>`;
+    $('#commitments-list').innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadCommitments()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
 }
 
@@ -1753,8 +1909,55 @@ async function completeCommitment(id, completed = true) {
   catch (err) { showToast(err.message, 'error'); }
 }
 
+// ========== 承诺详情 ==========
+async function renderCommitmentDetail() {
+  const id = state.pageParams?.id;
+  if (!id) { navigate('commitments'); return; }
+  
+  const div = el('div', 'p-4 md:p-8 max-w-2xl mx-auto fade-in');
+  try {
+    const data = await api.get('/api/commitments');
+    const c = data.commitments?.find(item => item.id == id);
+    if (!c) { showToast('承诺不存在', 'error'); navigate('commitments'); return; }
+    
+    div.innerHTML = `
+      <div class="mb-6">
+        <button onclick="navigate('commitments')" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2 flex items-center gap-1"><i class="fas fa-arrow-left"></i>返回</button>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-white">承诺详情</h2>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
+        <div class="flex items-start justify-between mb-4">
+          <div class="flex-1">
+            <p class="font-bold text-lg text-gray-800 dark:text-white ${c.completed ? 'line-through opacity-60' : ''}">${c.description}</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">${c.witness_type === 'self' ? '🤚 自我承诺' : '👥 外部见证'} · ${c.task_title || '独立承诺'}</p>
+          </div>
+          ${c.completed ? `<span class="px-3 py-1 rounded-full bg-secondary/10 text-secondary text-sm font-medium">已完成</span>` : ''}
+        </div>
+        
+        ${c.relapse_count > 0 ? `<div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl mb-4"><p class="text-sm text-red-600 dark:text-red-400"><i class="fas fa-exclamation-triangle mr-1"></i>已破戒 ${c.relapse_count} 次${c.last_relapse_date ? `，最近一次：${new Date(c.last_relapse_date).toLocaleDateString('zh-CN')}` : ''}</p></div>` : ''}
+        
+        ${c.reminder_enabled ? `<div class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl mb-4"><p class="text-sm text-blue-600 dark:text-blue-400"><i class="fas fa-bell mr-1"></i>提醒已开启${c.reminder_time ? `（${c.reminder_time}）` : ''}</p></div>` : ''}
+        
+        <div class="flex gap-2 mt-6">
+          ${!c.completed ? `
+            <button onclick="recordRelapse(${c.id})" class="flex-1 bg-red-50 dark:bg-red-900/20 text-danger py-2 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-times-circle mr-1"></i>记录破戒</button>
+            <button onclick="completeCommitment(${c.id})" class="flex-1 bg-secondary text-white py-2 rounded-xl text-sm font-medium hover:bg-secondary/90 transition-all touch-btn"><i class="fas fa-check mr-1"></i>标记完成</button>
+          ` : `
+            <button onclick="completeCommitment(${c.id}, false)" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all touch-btn"><i class="fas fa-undo mr-1"></i>重新打开</button>
+          `}
+          <button onclick="deleteCommitment(${c.id})" aria-label="删除承诺" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    div.innerHTML = '<div class="p-8 text-center text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTimeBlocks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+  }
+  return div;
+}
+
 async function recordRelapse(id) {
-  if (!confirm('确定要记录一次破戒吗？')) return;
+  var confirmed = await showConfirmModal('确定要记录一次破戒吗？', '记录破戒');
+  if (!confirmed) return;
   try {
     await api.post(`/api/commitments/${id}/relapse`);
     showToast('已记录破戒');
@@ -1763,8 +1966,9 @@ async function recordRelapse(id) {
 }
 
 async function deleteCommitment(id) {
-  if (!confirm('确定删除这个承诺？')) return;
-  try { await api.del(`/api/commitments/${id}`); showToast('已删除'); loadCommitments(); }
+  var confirmed = await showConfirmModal('确定删除这个承诺？', '删除');
+  if (!confirmed) return;
+  try { await api.del(`/api/commitments/${id}`); showDeleteUndo('承诺已删除'); loadCommitments(); }
   catch (err) { showToast(err.message, 'error'); }
 }
 
@@ -1802,11 +2006,11 @@ async function loadTimeBlocks() {
       <div class="flex items-center gap-4 p-4 rounded-xl border ${typeColors[b.block_type] || 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'}">
         <div class="text-center min-w-[60px]"><p class="font-bold text-sm">${b.start_time?.slice(0,5) || ''}</p><p class="text-xs opacity-70">${b.end_time?.slice(0,5) || ''}</p></div>
         <div class="flex-1"><p class="font-medium">${b.task_title || typeLabels[b.block_type] || '时间块'}</p><p class="text-xs opacity-70">能量 ${b.energy_level}/5</p></div>
-        <button onclick="deleteTimeBlock(${b.id})" class="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all touch-btn"><i class="fas fa-trash text-sm"></i></button>
+        <button onclick="deleteTimeBlock(${b.id})" aria-label="删除时间块" class="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all touch-btn"><i class="fas fa-trash text-sm"></i></button>
       </div>
     `).join('');
   } catch (err) {
-    $('#timeblocks-timeline').innerHTML = `<div class="text-center py-8 text-danger">加载失败: ${err.message}</div>`;
+    $('#timeblocks-timeline').innerHTML = '<div class="text-center py-8 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTimeBlocks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
 }
 
@@ -1857,7 +2061,8 @@ async function createTimeBlock() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 async function deleteTimeBlock(id) {
-  if (!confirm('确定删除这个时间块？')) return;
+  var confirmed = await showConfirmModal('确定删除这个时间块？', '删除');
+  if (!confirmed) return;
   try { await api.del(`/api/time-blocks/${id}`); showToast('已删除'); loadTimeBlocks(); }
   catch (err) { showToast(err.message, 'error'); }
 }
@@ -1865,6 +2070,15 @@ async function deleteTimeBlock(id) {
 // ========== 设置 ==========
 function renderSettings() {
   const div = el('div', 'p-4 md:p-8 max-w-2xl mx-auto fade-in');
+  
+  // 加载用户偏好
+  const userPrefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  const pomodoroWork = userPrefs.pomodoroWork || 25;
+  const pomodoroBreak = userPrefs.pomodoroBreak || 5;
+  const reminderEnabled = userPrefs.reminderEnabled !== false;
+  const reminderInterval = userPrefs.reminderInterval || 30;
+  const defaultEnergy = userPrefs.defaultEnergy || 5;
+  
   div.innerHTML = `
     <div class="mb-6"><h2 class="text-2xl font-bold text-gray-800 dark:text-white">设置</h2><p class="text-gray-500 dark:text-gray-400">系统配置与数据管理</p></div>
     <div class="space-y-6">
@@ -1876,12 +2090,92 @@ function renderSettings() {
       </div>
 
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-        <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-moon text-calm"></i>外观</h3>
-        <div class="flex items-center justify-between">
-          <div><p class="font-medium text-gray-800 dark:text-white">深色模式</p><p class="text-sm text-gray-500 dark:text-gray-400">切换浅色/深色主题</p></div>
-          <button onclick="toggleDarkMode()" class="w-14 h-8 rounded-full ${state.darkMode ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'} transition-colors relative touch-btn">
-            <div class="absolute top-1 ${state.darkMode ? 'left-7' : 'left-1'} w-6 h-6 rounded-full bg-white shadow transition-all flex items-center justify-center"><i class="fas fa-${state.darkMode ? 'moon' : 'sun'} text-xs text-gray-600"></i></div>
-          </button>
+        <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-palette text-primary"></i>外观与主题</h3>
+        <div class="space-y-4">
+          <!-- 深色模式 -->
+          <div class="flex items-center justify-between">
+            <div><p class="font-medium text-gray-800 dark:text-white">深色模式</p><p class="text-sm text-gray-500 dark:text-gray-400">切换浅色/深色主题</p></div>
+            <button onclick="toggleDarkMode()" class="w-14 h-8 rounded-full ${state.darkMode ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'} transition-colors relative touch-btn">
+              <div class="absolute top-1 ${state.darkMode ? 'left-7' : 'left-1'} w-6 h-6 rounded-full bg-white shadow transition-all flex items-center justify-center"><i class="fas fa-${state.darkMode ? 'moon' : 'sun'} text-xs text-gray-600"></i></div>
+            </button>
+          </div>
+          
+          <!-- 主题颜色 -->
+          <div>
+            <p class="font-medium text-gray-800 dark:text-white mb-2">主题颜色</p>
+            <div class="flex gap-3">
+              ${[
+                { color: 'indigo', label: '靛蓝', bg: 'bg-indigo-500' },
+                { color: 'blue', label: '天蓝', bg: 'bg-blue-500' },
+                { color: 'green', label: '翠绿', bg: 'bg-green-500' },
+                { color: 'purple', label: '紫罗兰', bg: 'bg-purple-500' },
+                { color: 'rose', label: '玫瑰', bg: 'bg-rose-500' },
+                { color: 'amber', label: '琥珀', bg: 'bg-amber-500' }
+              ].map(t => `
+                <button onclick="setThemeColor('${t.color}')" class="w-10 h-10 rounded-full ${t.bg} ${userPrefs.themeColor === t.color || (!userPrefs.themeColor && t.color === 'indigo') ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-800' : ''} hover:scale-110 transition-transform touch-btn" title="${t.label}"></button>
+              `).join('')}
+            </div>
+          </div>
+          
+          <!-- 字体大小 -->
+          <div>
+            <p class="font-medium text-gray-800 dark:text-white mb-2">字体大小</p>
+            <div class="flex gap-2">
+              ${[
+                { size: 'small', label: '小', class: 'text-sm' },
+                { size: 'medium', label: '中', class: 'text-base' },
+                { size: 'large', label: '大', class: 'text-lg' }
+              ].map(s => `
+                <button onclick="setFontSize('${s.size}')" class="px-4 py-2 rounded-xl border ${userPrefs.fontSize === s.size || (!userPrefs.fontSize && s.size === 'medium') ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'} transition-all touch-btn ${s.class}">${s.label}</button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-stopwatch text-secondary"></i>番茄钟设置</h3>
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">专注时长（分钟）</label>
+              <input type="number" id="settings-pomo-work" value="${pomodoroWork}" min="1" max="90" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">休息时长（分钟）</label>
+              <input type="number" id="settings-pomo-break" value="${pomodoroBreak}" min="1" max="30" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">默认精力水平</label>
+            <div class="flex items-center gap-3">
+              <input type="range" id="settings-default-energy" min="1" max="10" value="${defaultEnergy}" class="flex-1" oninput="document.getElementById('energy-value').textContent=this.value">
+              <span id="energy-value" class="text-sm font-medium text-primary w-6 text-center">${defaultEnergy}</span>
+            </div>
+          </div>
+          <button onclick="savePomodoroSettings()" class="px-4 py-2 bg-secondary text-white rounded-xl text-sm font-medium hover:bg-secondary/90 transition-all touch-btn">保存番茄钟设置</button>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-bell text-accent"></i>提醒与通知</h3>
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div><p class="font-medium text-gray-800 dark:text-white">休息提醒</p><p class="text-sm text-gray-500 dark:text-gray-400">定时提醒你休息和活动</p></div>
+            <button onclick="toggleReminder()" class="w-14 h-8 rounded-full ${reminderEnabled ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'} transition-colors relative touch-btn">
+              <div class="absolute top-1 ${reminderEnabled ? 'left-7' : 'left-1'} w-6 h-6 rounded-full bg-white shadow transition-all flex items-center justify-center"><i class="fas fa-${reminderEnabled ? 'check' : 'times'} text-xs text-gray-600"></i></div>
+            </button>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">提醒间隔（分钟）</label>
+            <select id="settings-reminder-interval" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+              <option value="15" ${reminderInterval === 15 ? 'selected' : ''}>每 15 分钟</option>
+              <option value="30" ${reminderInterval === 30 ? 'selected' : ''}>每 30 分钟</option>
+              <option value="45" ${reminderInterval === 45 ? 'selected' : ''}>每 45 分钟</option>
+              <option value="60" ${reminderInterval === 60 ? 'selected' : ''}>每 60 分钟</option>
+            </select>
+          </div>
+          <button onclick="saveReminderSettings()" class="px-4 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 transition-all touch-btn">保存提醒设置</button>
         </div>
       </div>
 
@@ -1896,6 +2190,10 @@ function renderSettings() {
             <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><i class="fas fa-file-import"></i></div>
             <div><p class="font-medium">导入数据</p><p class="text-xs text-gray-500 dark:text-gray-400">从 JSON 文件恢复数据</p></div>
           </button>
+          <button onclick="showClearDataConfirm()" class="w-full flex items-center gap-3 p-4 rounded-xl bg-danger/5 dark:bg-danger/10 text-danger hover:bg-danger/10 dark:hover:bg-danger/20 transition-all text-left touch-btn">
+            <div class="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center"><i class="fas fa-trash-alt"></i></div>
+            <div><p class="font-medium">清除数据</p><p class="text-xs text-gray-500 dark:text-gray-400">清除所有本地缓存数据</p></div>
+          </button>
         </div>
       </div>
 
@@ -1908,6 +2206,7 @@ function renderSettings() {
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-keyboard text-calm"></i>快捷键</h3>
         <div class="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+          <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">1-9</kbd> 快速切换页面</p>
           <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">/</kbd> 搜索任务</p>
           <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Esc</kbd> 关闭弹窗</p>
           <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Enter</kbd> 提交表单</p>
@@ -1926,9 +2225,213 @@ function renderSettings() {
 function saveApiBase() {
   const base = $('#settings-api-base').value.trim();
   if (!base) { showToast('请输入 API 地址', 'error'); return; }
-  // 修复 Bug5: 保存后立即生效（无需刷新）
   safeStorage.set('api_base', base);
   showToast('API 地址已保存并生效');
+}
+
+// ========== 高级定制功能（P3）==========
+
+// 保存用户偏好
+function saveUserPrefs(prefs) {
+  const existing = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  const merged = { ...existing, ...prefs };
+  safeStorage.set('user_prefs', JSON.stringify(merged));
+  return merged;
+}
+
+function getUserPrefs() {
+  return JSON.parse(safeStorage.get('user_prefs') || '{}');
+}
+
+// 设置主题颜色
+function setThemeColor(color) {
+  saveUserPrefs({ themeColor: color });
+  
+  // 更新 CSS 变量
+  const root = document.documentElement;
+  const colorMap = {
+    indigo: { 500: '#6366f1', 600: '#4f46e5', 100: '#e0e7ff' },
+    blue: { 500: '#3b82f6', 600: '#2563eb', 100: '#dbeafe' },
+    green: { 500: '#22c55e', 600: '#16a34a', 100: '#dcfce7' },
+    purple: { 500: '#a855f7', 600: '#9333ea', 100: '#f3e8ff' },
+    rose: { 500: '#f43f5e', 600: '#e11d48', 100: '#ffe4e6' },
+    amber: { 500: '#f59e0b', 600: '#d97706', 100: '#fef3c7' }
+  };
+  
+  if (colorMap[color]) {
+    root.style.setProperty('--color-primary', colorMap[color][500]);
+    root.style.setProperty('--color-primary-dark', colorMap[color][600]);
+    root.style.setProperty('--color-primary-light', colorMap[color][100]);
+  }
+  
+  showToast('主题颜色已更新');
+  navigate('settings');
+}
+
+// 设置字体大小
+function setFontSize(size) {
+  saveUserPrefs({ fontSize: size });
+  
+  const sizeMap = { small: '14px', medium: '16px', large: '18px' };
+  document.documentElement.style.fontSize = sizeMap[size] || '16px';
+  
+  showToast('字体大小已更新');
+  navigate('settings');
+}
+
+// 保存番茄钟设置
+function savePomodoroSettings() {
+  const work = parseInt($('#settings-pomo-work')?.value) || 25;
+  const break_ = parseInt($('#settings-pomo-break')?.value) || 5;
+  const energy = parseInt($('#settings-default-energy')?.value) || 5;
+  
+  saveUserPrefs({ 
+    pomodoroWork: Math.max(1, Math.min(90, work)),
+    pomodoroBreak: Math.max(1, Math.min(30, break_)),
+    defaultEnergy: Math.max(1, Math.min(10, energy))
+  });
+  
+  showToast('番茄钟设置已保存');
+}
+
+// 切换提醒
+function toggleReminder() {
+  const prefs = getUserPrefs();
+  prefs.reminderEnabled = !prefs.reminderEnabled;
+  saveUserPrefs(prefs);
+  
+  if (prefs.reminderEnabled) {
+    startReminderTimer();
+    showToast('休息提醒已开启');
+  } else {
+    stopReminderTimer();
+    showToast('休息提醒已关闭');
+  }
+  
+  navigate('settings');
+}
+
+// 保存提醒设置
+function saveReminderSettings() {
+  const interval = parseInt($('#settings-reminder-interval')?.value) || 30;
+  saveUserPrefs({ reminderInterval: interval, reminderEnabled: true });
+  startReminderTimer();
+  showToast('提醒设置已保存');
+}
+
+// 提醒定时器
+let reminderTimerId = null;
+
+function startReminderTimer() {
+  stopReminderTimer();
+  const prefs = getUserPrefs();
+  if (!prefs.reminderEnabled) return;
+  
+  const interval = (prefs.reminderInterval || 30) * 60 * 1000;
+  reminderTimerId = setInterval(() => {
+    if (Notification.permission === 'granted') {
+      new Notification('周迹 - 休息提醒', {
+        body: '该休息一下了！站起来活动活动吧 🧘',
+        icon: '/icon-192.png'
+      });
+    } else {
+      showToast('🧘 该休息一下了！站起来活动活动吧', 'info');
+    }
+  }, interval);
+}
+
+function stopReminderTimer() {
+  if (reminderTimerId) {
+    clearInterval(reminderTimerId);
+    reminderTimerId = null;
+  }
+}
+
+// 清除数据确认
+function showClearDataConfirm() {
+  const modal = el('div', 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 modal-backdrop');
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 modal-content shadow-2xl border border-gray-100 dark:border-gray-700">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="font-bold text-xl text-danger"><i class="fas fa-exclamation-triangle mr-2"></i>清除数据</h3>
+        <button onclick="this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div class="space-y-4">
+        <div class="p-4 rounded-xl bg-danger/5 dark:bg-danger/10 border border-danger/20">
+          <p class="text-sm text-danger font-medium mb-2">⚠️ 此操作不可恢复！</p>
+          <p class="text-sm text-gray-600 dark:text-gray-400">请选择要清除的数据类型：</p>
+        </div>
+        
+        <div class="space-y-2">
+          <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-primary/50 transition-all">
+            <input type="checkbox" id="clear-cache" class="w-5 h-5 rounded text-primary" checked>
+            <div>
+              <p class="font-medium text-gray-800 dark:text-white">本地缓存</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">清除本地存储的临时数据</p>
+            </div>
+          </label>
+          <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-primary/50 transition-all">
+            <input type="checkbox" id="clear-preferences" class="w-5 h-5 rounded text-primary">
+            <div>
+              <p class="font-medium text-gray-800 dark:text-white">个人偏好</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">主题、番茄钟、提醒等设置</p>
+            </div>
+          </label>
+          <label class="flex items-center gap-3 p-3 rounded-xl border border-danger/30 dark:border-danger/30 cursor-pointer hover:border-danger/50 transition-all">
+            <input type="checkbox" id="clear-server" class="w-5 h-5 rounded text-danger">
+            <div>
+              <p class="font-medium text-danger">服务器数据</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">⚠️ 删除服务器上的所有用户数据</p>
+            </div>
+          </label>
+        </div>
+        
+        <div class="flex gap-2 justify-end">
+          <button onclick="this.closest('.modal-backdrop').remove()" class="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-sm touch-btn">取消</button>
+          <button onclick="executeClearData()" class="px-4 py-2 rounded-xl bg-danger text-white font-medium text-sm hover:bg-danger/90 transition-all touch-btn">确认清除</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function executeClearData() {
+  const clearCache = $('#clear-cache')?.checked;
+  const clearPrefs = $('#clear-preferences')?.checked;
+  const clearServer = $('#clear-server')?.checked;
+  
+  if (clearCache) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('timer_state');
+    localStorage.removeItem('pomo_state');
+  }
+  
+  if (clearPrefs) {
+    localStorage.removeItem('user_prefs');
+    localStorage.removeItem('dark_mode');
+    localStorage.removeItem('api_base');
+  }
+  
+  if (clearServer) {
+    var confirmed = await showConfirmModal('确定要删除服务器上的所有数据吗？此操作不可恢复！', '删除全部数据');
+    if (!confirmed) return;
+    try {
+      await api.delete('/api/user/data');
+      showToast('服务器数据已清除');
+    } catch (err) {
+      showToast('清除服务器数据失败: ' + err.message, 'error');
+    }
+  }
+  
+  document.querySelector('.modal-backdrop')?.remove();
+  showToast('数据清除完成');
+  
+  if (clearCache || clearPrefs) {
+    setTimeout(() => location.reload(), 1000);
+  }
 }
 
 async function exportData() {
@@ -2034,6 +2537,8 @@ document.addEventListener('keydown', (e) => {
 var _navigateHash = '';
 window.addEventListener('hashchange', () => {
   if (window.location.hash === _navigateHash) return;
+  // 修复: 浏览器前进/后退触发的不需要滚动到顶部
+  window._isBackForward = true;
   render();
 });
 
@@ -2060,6 +2565,7 @@ window.addEventListener('DOMContentLoaded', function() {
   // 修复 FE-016: 注册 Service Worker 实现 PWA 离线功能
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      // SW注册成功（生产环境静默）
       console.log('SW registered:', reg.scope);
     }).catch(function(err) {
       console.warn('SW registration failed:', err);
@@ -2108,6 +2614,18 @@ function cleanupEventListeners() {
 function initPageInteractions(page) {
   // 页面特定初始化
   cleanupEventListeners(); // 清理上一个页面的监听器
+
+  // 修复: 离开 stats 页面时销毁 Chart.js 实例
+  if (page !== 'stats') {
+    ['taskTrendChartInstance', 'emotionTrendChartInstance', 'procrastinationChartInstance'].forEach(function(key) {
+      if (window[key]) { try { window[key].destroy(); } catch(e) {} window[key] = null; }
+    });
+  }
+  
+  // 修复: 离开 assistant 页面时清理后台计时器
+  if (page !== 'assistant' && window.cleanupReminders) {
+    window.cleanupReminders();
+  }
 
   if (page === 'micro-start') {
     // 计时器状态已在 restoreTimerState 中处理
@@ -2168,12 +2686,22 @@ window.stopTimer = stopTimer;
 window.toggleAuthMode = toggleAuthMode;
 window.toggleDarkMode = toggleDarkMode;
 window.toggleStep = toggleStep;
+window.toggleReminder = toggleReminder;
 window.navigate = navigate;
 window.updateTaskStatus = updateTaskStatus;
 window.useTemplate = useTemplate;
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.logout = logout;
+window.setThemeColor = setThemeColor;
+window.setFontSize = setFontSize;
+window.savePomodoroSettings = savePomodoroSettings;
+window.saveReminderSettings = saveReminderSettings;
+window.showClearDataConfirm = showClearDataConfirm;
+window.executeClearData = executeClearData;
+window.showConfirmModal = showConfirmModal;
+window.setupModalFocusTrap = setupModalFocusTrap;
+window.escapeHtml = window.escapeHtml || escapeHtml;
 
 // ========== 初始化 ==========
 document.addEventListener('DOMContentLoaded', function() {

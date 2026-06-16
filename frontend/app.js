@@ -260,6 +260,9 @@ const api = {
         var data = await res.json();
         if (!res.ok) throw new Error(data.error || data.message || 'HTTP ' + res.status);
 
+        // 请求成功，恢复在线状态
+        this._isOnline = true;
+
         if (this._offlineQueue.length > 0 && navigator.onLine) {
           this._syncOfflineQueue();
         }
@@ -290,6 +293,8 @@ const api = {
 
   async _syncOfflineQueue() {
     if (this._offlineQueue.length === 0 || !navigator.onLine) return;
+    // 临时恢复在线状态，否则 request() 会再次拦截
+    this._isOnline = true;
     var queue = this._offlineQueue.slice();
     this._offlineQueue = [];
     safeStorage.remove('offline_queue');
@@ -309,6 +314,17 @@ const api = {
   put: (e, b) => api.request('PUT', e, b),
   del: (e) => api.request('DELETE', e)
 };
+
+// 监听网络状态变化，自动恢复在线标识
+window.addEventListener('online', function() {
+  api._isOnline = true;
+  console.log('网络已恢复');
+  api._syncOfflineQueue();
+});
+window.addEventListener('offline', function() {
+  api._isOnline = false;
+  console.log('网络已断开');
+});
 
 // 状态
 const state = {

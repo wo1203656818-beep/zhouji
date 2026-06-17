@@ -12,6 +12,11 @@ database_id = "75ec6cc9-f215-40a5-812d-83cc30f88293"
 binding = "ATTACHMENTS"
 bucket_name = "zhouji-attachments"
 
+[[kv_namespaces]]
+binding = "CACHE"
+id = "59e5276948844ded8ac8b7119c59d50d"
+preview_id = "f25ac7da08df42389fc46a0a2edbc70c"
+
 [vars]
 NODE_ENV = "production"
 FRONTEND_URL = "https://zhouji-frontend.pages.dev"

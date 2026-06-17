@@ -453,6 +453,7 @@ function renderNav() {
   }
 
   const desktopItems = [
+    { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表盘' },
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务台' },
     { id: 'micro-start', icon: 'fa-play-circle', label: '微启动' },
@@ -468,10 +469,10 @@ function renderNav() {
   ];
   
   const mobileItems = [
+    { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表' },
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
   ];
   
@@ -544,10 +545,10 @@ function renderMobileNav() {
 
   // 移动端只显示 5 个核心 tab + "更多" 弹出面板
   const mobileItems = [
+    { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表' },
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
   ];
 
@@ -875,222 +876,208 @@ async function renderDashboard() {
     weekly.forEach(d => { totalTasks += d.tasks_created || 0; totalStarted += d.tasks_started || 0; });
     const startRate = totalTasks > 0 ? Math.round((totalStarted / totalTasks) * 100) : 0;
 
+    // 计算一些额外指标
+    var todayTasksCompleted = stats.tasks_completed || 0;
+    var todayTasksTotal = stats.tasks_created || 0;
+    var totalPomo = todayPomo.count || 0;
+    var streakDays = 0;
+    // 从周统计中计算最长连续完成天数
+    if (weekly.length > 0) {
+      var rev = [...weekly].reverse();
+      for (var si = 0; si < rev.length; si++) {
+        if ((rev[si].tasks_completed || 0) > 0) streakDays++;
+        else break;
+      }
+    }
+
     div.innerHTML = `
-      <div class="mb-8">
-        <h2 class="text-2xl md:text-3xl font-bold gradient-text mb-2">欢迎回来，${safeStorage.get('username') || '朋友'}</h2>
-        <p class="text-gray-500 dark:text-gray-400">${new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-      </div>
-
-      <div class="grid-responsive mb-8">
-        <div class="stat-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">今日任务</span>
-            <span class="stat-icon" style="background: var(--color-primary-light); color: var(--color-primary);"><i class="fas fa-tasks"></i></span>
-          </div>
-          <div class="stat-value">${stats.tasks_created || 0}</div>
-          <p class="stat-label">${stats.tasks_completed || 0} 已完成</p>
+      <div class="mb-3 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg md:text-xl font-bold gradient-text">欢迎回来，${safeStorage.get('username') || '朋友'}</h2>
+          <p class="text-xs text-gray-400 dark:text-gray-500">${new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
-        <div class="stat-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">微启动</span>
-            <span class="stat-icon" style="background: var(--color-secondary-light); color: var(--color-secondary);"><i class="fas fa-play-circle"></i></span>
-          </div>
-          <div class="stat-value">${stats.micro_starts_count || 0}</div>
-          <p class="stat-label">2分钟契约</p>
-        </div>
-        <div class="stat-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">番茄钟</span>
-            <span class="stat-icon" style="background: rgba(239,68,68,0.1); color: #EF4444;"><i class="fas fa-stopwatch"></i></span>
-          </div>
-          <div class="stat-value">${todayPomo.count || 0}</div>
-          <p class="stat-label">${todayPomo.completed || 0} 完成</p>
-        </div>
-        <div class="stat-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">拖延记录</span>
-            <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500">
-              <i class="fas fa-exclamation-triangle"></i>
-            </div>
-          </div>
-          <p class="text-3xl font-bold text-gray-800 dark:text-white">${stats.procrastination_count || 0}</p>
-          <p class="text-sm text-gray-400 mt-1">今日觉察</p>
-        </div>
-        <div class="stat-card">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">本周启动率</span>
-            <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500">
-              <i class="fas fa-chart-line"></i>
-            </div>
-          </div>
-          <p class="text-3xl font-bold text-gray-800 dark:text-white">${startRate}%</p>
-          <p class="text-sm text-gray-400 mt-1">任务启动比例</p>
+        <div class="flex items-center gap-2 text-xs text-gray-400">
+          <span class="flex items-center gap-1"><i class="fas fa-bolt text-green-500"></i>${streakDays}天连胜</span>
         </div>
       </div>
 
-      <div class="grid lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 space-y-6">
-          <div class="card-modern p-6">
-            <div class="flex items-center justify-between mb-5">
-              <h3 class="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
-                <i class="fas fa-mountain text-orange-500"></i> 今日时间地形
+      <div class="grid grid-cols-5 gap-2 mb-3">
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
+          <span class="text-xs text-gray-400 dark:text-gray-500 block">今日任务</span>
+          <span class="block text-lg font-bold text-gray-800 dark:text-white">${todayTasksTotal}</span>
+          <span class="text-xs text-gray-400">完成 ${todayTasksCompleted}</span>
+        </div>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
+          <span class="text-xs text-gray-400 dark:text-gray-500 block">微启动</span>
+          <span class="block text-lg font-bold text-gray-800 dark:text-white">${stats.micro_starts_count || 0}</span>
+          <span class="text-xs text-gray-400">2分钟契约</span>
+        </div>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
+          <span class="text-xs text-gray-400 dark:text-gray-500 block">番茄钟</span>
+          <span class="block text-lg font-bold text-gray-800 dark:text-white">${totalPomo}</span>
+          <span class="text-xs text-gray-400">${todayPomo.completed || 0} 完成</span>
+        </div>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
+          <span class="text-xs text-gray-400 dark:text-gray-500 block">拖延记录</span>
+          <span class="block text-lg font-bold text-gray-800 dark:text-white">${stats.procrastination_count || 0}</span>
+          <span class="text-xs text-gray-400">今日觉察</span>
+        </div>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
+          <span class="text-xs text-gray-400 dark:text-gray-500 block">启动率</span>
+          <span class="block text-lg font-bold text-gray-800 dark:text-white">${startRate}%</span>
+          <span class="text-xs text-gray-400">本周</span>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-4 gap-3">
+        <div class="lg:col-span-2 space-y-3">
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                <i class="fas fa-clipboard-list text-indigo-500" style="font-size:11px"></i> 待启动
               </h3>
-              <button onclick="navigate('time-blocks')" class="text-sm text-indigo-600 font-medium hover:text-indigo-700">管理</button>
+              <button onclick="navigate('tasks')" class="text-xs text-indigo-500 hover:text-indigo-600">全部</button>
             </div>
-            <div class="relative h-40 md:h-48 bg-gray-50 dark:bg-gray-700/50 rounded-xl overflow-hidden">${renderTimeTerrain(blocks)}</div>
-            <div class="flex gap-4 mt-4 text-sm text-gray-500 dark:text-gray-400 flex-wrap">
-              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-gray-300 dark:bg-gray-600"></span>已逝</span>
-              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-indigo-400/30"></span>计划</span>
-              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-green-400/30"></span>完成</span>
-              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-amber-400/30"></span>进行中</span>
-            </div>
+            ${tasks.length === 0 ? '<p class="text-xs text-gray-400 text-center py-8">还没有任务</p>' :
+              tasks.slice(0, 4).map(task => `
+                <div class="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/30 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/20 rounded px-1" onclick="navigate('task-detail', {id: ${task.id}})">
+                  <i class="fas fa-${getCategoryIcon(task.category)}" style="font-size:9px;color:#6366f1;width:16px;text-align:center"></i>
+                  <span class="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate">${task.title}</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded-full ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
+                </div>
+              `).join('')}
           </div>
 
-          <div class="card-modern p-6">
-            <div class="flex items-center justify-between mb-5">
-              <h3 class="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
-                <i class="fas fa-clipboard-list text-indigo-500"></i> 待启动任务
-              </h3>
-              <button onclick="navigate('tasks')" class="text-sm text-indigo-600 font-medium hover:text-indigo-700">查看全部</button>
-            </div>
-            ${tasks.length === 0 ? `
-              <div class="text-center py-10 text-gray-400 dark:text-gray-500">
-                <i class="fas fa-seedling text-5xl mb-4 text-gray-300 dark:text-gray-600"></i>
-                <p class="text-lg">还没有任务，去创建第一个吧</p>
-                <button onclick="navigate('tasks')" class="btn-modern mt-5">创建任务</button>
-              </div>
-            ` : `<div class="space-y-3">${tasks.map(task => `
-              <div class="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-all cursor-pointer" onclick="navigate('task-detail', {id: ${task.id}})">
-                <div class="w-12 h-12 rounded-xl bg-gradient-soft flex items-center justify-center text-indigo-500">
-                  <i class="fas fa-${getCategoryIcon(task.category)}"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <h4 class="font-semibold text-gray-800 dark:text-gray-200 truncate">${task.title}</h4>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">${task.steps_count || 0} 个原子步骤 · 难度 ${'★'.repeat(task.difficulty || 2)}</p>
-                </div>
-                <span class="px-3 py-1.5 rounded-full text-xs font-semibold ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
-              </div>
-            `).join('')}</div>`}
-          </div>
-
-          <div class="card-modern p-6">
-            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-5 flex items-center gap-2">
-              <i class="fas fa-chart-bar text-blue-500"></i> 近7天行动趋势
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+              <i class="fas fa-chart-bar text-blue-500" style="font-size:11px"></i> 近7天趋势
             </h3>
-            <div class="h-40 flex items-end gap-1 md:gap-2">
+            <div class="h-20 flex items-end gap-1">
               ${weekly.map((d, i) => {
                 const max = Math.max(...weekly.map(x => Math.max(x.tasks_completed||0, x.micro_starts_count||0, x.procrastination_count||0, x.pomodoro_count||0))) || 1;
-                const h1 = Math.round(((d.tasks_completed||0) / max) * 100);
-                const h2 = Math.round(((d.micro_starts_count||0) / max) * 100);
-                const h3 = Math.round(((d.procrastination_count||0) / max) * 100);
-                const h4 = Math.round(((d.pomodoro_count||0) / max) * 100);
-                return `<div class="flex-1 flex flex-col items-center gap-1">
-                  <div class="w-full flex gap-px md:gap-0.5 h-32 items-end">
-                    <div class="flex-1 bg-secondary/60 rounded-t" style="height:${Math.max(4,h1)}%"></div>
-                    <div class="flex-1 bg-primary/60 rounded-t" style="height:${Math.max(4,h2)}%"></div>
-                    <div class="flex-1 bg-accent/60 rounded-t" style="height:${Math.max(4,h3)}%"></div>
-                    <div class="flex-1 bg-danger/60 rounded-t" style="height:${Math.max(4,h4)}%"></div>
+                return `<div class="flex-1 flex flex-col items-center gap-0.5">
+                  <div class="w-full flex gap-px h-16 items-end">
+                    <div class="flex-1 bg-secondary/60 rounded-t" style="height:${Math.max(4,Math.round(((d.tasks_completed||0)/max)*100))}%"></div>
+                    <div class="flex-1 bg-primary/60 rounded-t" style="height:${Math.max(4,Math.round(((d.micro_starts_count||0)/max)*100))}%"></div>
+                    <div class="flex-1 bg-accent/60 rounded-t" style="height:${Math.max(4,Math.round(((d.procrastination_count||0)/max)*100))}%"></div>
+                    <div class="flex-1 bg-danger/60 rounded-t" style="height:${Math.max(4,Math.round(((d.pomodoro_count||0)/max)*100))}%"></div>
                   </div>
-                  <span class="text-xs text-gray-400">${d.stat_date?.slice(5) || ''}</span>
+                  <span class="text-[9px] text-gray-400">${d.stat_date?.slice(5) || ''}</span>
                 </div>`;
               }).join('')}
             </div>
-            <div class="flex gap-3 mt-3 text-xs text-gray-500 dark:text-gray-400 justify-center flex-wrap">
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-secondary/60"></span>完成</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-primary/60"></span>启动</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-accent/60"></span>拖延</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-danger/60"></span>番茄</span>
+            <div class="flex gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500 justify-center">
+              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-secondary/60"></span>完成</span>
+              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-primary/60"></span>启动</span>
+              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-accent/60"></span>拖延</span>
+              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-danger/60"></span>番茄</span>
             </div>
           </div>
         </div>
 
-        <div class="space-y-6">
-          <div class="card-modern p-6 bg-gradient-soft">
-            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-              <i class="fas fa-heart text-rose-500"></i> 情绪状态
+        <div class="lg:col-span-1 space-y-3">
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+              <i class="fas fa-heart text-rose-500" style="font-size:11px"></i> 情绪
             </h3>
             ${emotion ? `
-              <div class="space-y-4">
-                <div class="flex items-center gap-3">
-                  <span class="text-3xl">${getEmotionEmoji(emotion.emotion_type)}</span>
-                  <div>
-                    <p class="font-semibold text-gray-800 dark:text-white">${getEmotionLabel(emotion.emotion_type)}</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">${new Date(emotion.created_at).toLocaleString('zh-CN')}</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">能量</span>
-                  <div class="flex-1 h-3 bg-white/60 dark:bg-gray-700/60 rounded-full overflow-hidden">
-                    <div class="h-full bg-gradient-to-r from-rose-400 to-green-400 rounded-full" style="width:${(emotion.energy_level/5)*100}%"></div>
-                  </div>
-                  <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${emotion.energy_level}/5</span>
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-xl">${getEmotionEmoji(emotion.emotion_type)}</span>
+                <div>
+                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-300">${getEmotionLabel(emotion.emotion_type)}</p>
+                  <p class="text-[10px] text-gray-400">${new Date(emotion.created_at).toLocaleString('zh-CN')}</p>
                 </div>
               </div>
-            ` : `<p class="text-gray-500 dark:text-gray-400 mb-4">还没有记录情绪，开始第一次扫描吧</p>`}
-            <button onclick="navigate('emotion')" class="btn-modern w-full">${emotion ? '重新扫描' : '情绪扫描'}</button>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] text-gray-400">能量</span>
+                <div class="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-rose-400 to-green-400 rounded-full" style="width:${(emotion.energy_level/5)*100}%"></div>
+                </div>
+                <span class="text-[10px] font-semibold text-gray-600 dark:text-gray-400">${emotion.energy_level}/5</span>
+              </div>
+            ` : '<p class="text-xs text-gray-400 py-2">暂无记录</p>'}
+            <button onclick="navigate('emotion')" class="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-all">${emotion ? '扫描' : '情绪扫描'}</button>
           </div>
 
-          ${data.upcomingTasks && data.upcomingTasks.length > 0 ? `
-          <div class="card-modern p-6">
-            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-              <i class="fas fa-exclamation-circle text-amber-500"></i> 即将到期
-            </h3>
-            <div class="space-y-3">
-              ${data.upcomingTasks.map(task => `
-                <div class="flex items-center gap-3 p-4 rounded-xl ${new Date(task.due_date + 'T23:59:59') < new Date() ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-700/30'}">
-                  <div class="flex-1 min-w-0">
-                    <p class="font-semibold text-gray-800 dark:text-gray-200 truncate">${task.title}</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      <i class="fas fa-calendar mr-1"></i>${task.due_date}
-                      ${new Date(task.due_date + 'T23:59:59') < new Date() ? ' ⚠️ 已过期' : ' ⏰ 即将到期'}
-                    </p>
-                  </div>
-                  <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-4 py-2 rounded-xl text-sm bg-indigo-100 text-indigo-600 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium">查看</button>
-                </div>
-              `).join('')}
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1"><i class="fas fa-bolt text-amber-500" style="font-size:11px"></i> 快捷</h3>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button onclick="navigate('micro-start')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-play" style="font-size:10px"></i> 启动</button>
+              <button onclick="navigate('pomodoro')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-stopwatch" style="font-size:10px"></i> 番茄</button>
+              <button onclick="navigate('tasks')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-cut" style="font-size:10px"></i> 拆解</button>
+              <button onclick="navigate('lab')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-microscope" style="font-size:10px"></i> 拖延</button>
             </div>
           </div>
-          ` : ''}
-          
-          <div class="card-modern p-6">
-            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-5">快速行动</h3>
-            <div class="space-y-3">
-              <button onclick="navigate('micro-start')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all text-left">
-                <div class="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-800/50 flex items-center justify-center">
-                  <i class="fas fa-play text-xl"></i>
-                </div>
-                <div>
-                  <p class="font-semibold">2分钟契约</p>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">只做2分钟，然后自由选择</p>
-                </div>
-              </button>
-              <button onclick="navigate('pomodoro')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all text-left">
-                <div class="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-800/50 flex items-center justify-center">
-                  <i class="fas fa-stopwatch text-xl"></i>
-                </div>
-                <div>
-                  <p class="font-semibold">番茄钟</p>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">${d.work/60}分钟专注 + ${d.shortBreak/60}分钟休息</p>
-                </div>
-              </button>
-              <button onclick="navigate('tasks')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 transition-all text-left">
-                <div class="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-800/50 flex items-center justify-center">
-                  <i class="fas fa-cut text-xl"></i>
-                </div>
-                <div>
-                  <p class="font-semibold">拆解任务</p>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">把模糊任务切成原子步骤</p>
-                </div>
-              </button>
-              <button onclick="navigate('lab')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all text-left">
-                <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-800/50 flex items-center justify-center">
-                  <i class="fas fa-microscope text-xl"></i>
-                </div>
-                <div>
-                  <p class="font-semibold">拖延模式</p>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">看看你的拖延规律</p>
-                </div>
-              </button>
+
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+              <i class="fas fa-fire text-orange-500" style="font-size:11px"></i> 今日概况
+            </h3>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-500">已完成任务</span>
+                <span class="font-semibold text-gray-700 dark:text-gray-300">${todayTasksCompleted} / ${todayTasksTotal}</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-500">番茄专注</span>
+                <span class="font-semibold text-gray-700 dark:text-gray-300">${totalPomo} 轮</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-500">本周连胜</span>
+                <span class="font-semibold text-green-600">${streakDays} 天</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-500">启动率</span>
+                <span class="font-semibold text-gray-700 dark:text-gray-300">${startRate}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-1 space-y-3">
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                <i class="fas fa-mountain text-orange-500" style="font-size:11px"></i> 时间
+              </h3>
+              <button onclick="navigate('time-blocks')" class="text-[10px] text-indigo-500 hover:text-indigo-600">管理</button>
+            </div>
+            <div class="h-16 bg-gray-50 dark:bg-gray-700/50 rounded-lg overflow-hidden relative">${renderTimeTerrain(blocks)}</div>
+          </div>
+
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+              <i class="fas fa-exclamation-circle text-amber-500" style="font-size:11px"></i> 到期
+            </h3>
+            ${data.upcomingTasks && data.upcomingTasks.length > 0 ? data.upcomingTasks.slice(0, 4).map(task => {
+              var isOverdue = new Date(task.due_date + 'T23:59:59') < new Date();
+              return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/30 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/20 rounded px-1" onclick="navigate('task-detail', {id: ${task.id}})">
+                <span class="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate">${task.title}</span>
+                <span class="text-[10px] ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'}">${isOverdue ? '已过期' : task.due_date}</span>
+              </div>`;
+            }).join('') : '<p class="text-xs text-gray-400 text-center py-6">无到期任务</p>'}
+          </div>
+
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
+            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+              <i class="fas fa-tasks text-green-500" style="font-size:11px"></i> 任务池
+            </h3>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 text-xs">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span class="text-gray-500">待完成</span>
+                <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='pending').length}</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                <span class="text-gray-500">进行中</span>
+                <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='in_progress').length}</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                <span class="text-gray-500">已完成</span>
+                <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='completed').length}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1109,12 +1096,12 @@ async function renderDashboard() {
 function renderTimeTerrain(blocks) {
   if (blocks.length === 0) {
     return `<div class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-      <div class="text-center"><i class="fas fa-mountain text-3xl mb-2 text-gray-300 dark:text-gray-600"></i><p class="text-sm">还没有时间块</p><button onclick="navigate('time-blocks')" class="mt-2 text-xs text-primary">添加时间块</button></div>
+      <div class="text-center"><i class="fas fa-mountain text-lg mb-1 text-gray-300 dark:text-gray-600"></i><p class="text-xs">无</p></div>
     </div>`;
   }
   const hours = Array.from({length: 24}, (_, i) => i);
   const now = new Date(); const currentHour = now.getHours();
-  let html = `<div class="flex overflow-x-auto sm:overflow-visible gap-0 rounded-xl h-20 sm:h-16 border border-gray-200 dark:border-gray-700 relative scrollbar-hide"><div class="absolute top-1 left-1 z-10 bg-white/80 dark:bg-gray-800/80 backdrop-blur px-1.5 py-0.5 rounded text-[10px] font-medium dark:text-white shadow-sm">现在 ${currentHour}:${String(now.getMinutes()).padStart(2,'0')}</div>`;
+  let html = `<div class="flex overflow-x-auto sm:overflow-visible gap-0 rounded-lg h-14 border border-gray-200 dark:border-gray-700 relative scrollbar-hide"><div class="absolute top-0.5 left-0.5 z-10 bg-white/80 dark:bg-gray-800/80 backdrop-blur px-1 py-0.5 rounded text-[9px] font-medium dark:text-white shadow-sm">${currentHour}:${String(now.getMinutes()).padStart(2,'0')}</div>`;
   hours.forEach(hour => {
     const block = blocks.find(b => {
       const start = parseInt(b.start_time?.split(':')[0] || 0);
@@ -1129,7 +1116,7 @@ function renderTimeTerrain(blocks) {
       else color = 'bg-accent/30';
     }
     if (hour === currentHour) color = 'bg-warm/40';
-    html += `<div class="flex-shrink-0 w-10 sm:flex-1 ${color} border-r border-white/30 dark:border-gray-800/30 relative flex flex-col items-center justify-end pb-1"><div class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">${hour}</div></div>`;
+    html += `<div class="flex-shrink-0 w-6 sm:flex-1 ${color} border-r border-white/30 dark:border-gray-800/30 relative flex flex-col items-center justify-end pb-0.5"><div class="text-[8px] sm:text-[10px] text-gray-500 dark:text-gray-400">${hour}</div></div>`;
   });
   html += `</div>`;
   return html;

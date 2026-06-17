@@ -428,6 +428,13 @@ function getLastRowId(result) {
   return null;
 }
 
+// 清除用户仪表盘 KV 缓存（在数据变更时调用）
+async function clearDashCache(env, userId) {
+  if (env.CACHE) {
+    try { await env.CACHE.delete('dash_' + userId); } catch(e) { /* ignore */ }
+  }
+}
+
 // ========== 请求限流 (简单内存版) ==========
 const rateLimitMap = new Map();
 function checkRateLimit(clientIP, maxRequests, windowMs) {
@@ -715,6 +722,7 @@ router.post('/api/tasks', async (req, env) => {
 
     const taskId = getLastRowId(result);
     await updateDailyStat(db, auth.userId, 'tasks_created');
+    await clearDashCache(env, auth.userId);
 
     return jsonResponse({ success: true, taskId });
   } catch (e) {
@@ -787,6 +795,7 @@ router.put('/api/tasks/:id', async (req, env) => {
     if (status === 'completed' && existing.status !== 'completed') {
       await updateDailyStat(db, auth.userId, 'tasks_completed');
     }
+    await clearDashCache(env, auth.userId);
 
     return jsonResponse({ success: true });
   } catch (e) {
@@ -959,6 +968,7 @@ router.post('/api/micro-starts', async (req, env) => {
            parseInt(actual_duration) || 0, continued_after_contract ? 1 : 0).run();
 
     await updateDailyStat(db, auth.userId, 'micro_starts_count');
+    await clearDashCache(env, auth.userId);
 
     if (task_id) {
       await db.prepare("UPDATE tasks SET status = 'in_progress' WHERE id = ? AND user_id = ?")
@@ -1221,6 +1231,7 @@ router.post('/api/pomodoro', async (req, env) => {
     ).bind(auth.userId, task_id || null, step_id || null, parseInt(duration) || 25, completed ? 1 : 0).run();
 
     await updateDailyStat(db, auth.userId, 'pomodoro_count');
+    await clearDashCache(env, auth.userId);
     return jsonResponse({ success: true, sessionId: getLastRowId(result) });
   } catch (e) {
     return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
@@ -1345,62 +1356,35 @@ router.get('/api/dashboard', async (req, env) => {
     const db = env.DB;
     const userId = auth.userId;
     const today = new Date().toISOString().split('T')[0];
-
-    const todayStats = await db.prepare(
-      'SELECT * FROM daily_stats WHERE user_id = ? AND stat_date = ?'
-    ).bind(userId, today).first();
-
-    const pendingTasks = await db.prepare(
-      `SELECT * FROM tasks WHERE user_id = ? AND status IN ('pending', 'in_progress') 
-       ORDER BY difficulty ASC, created_at DESC LIMIT 5`
-    ).bind(userId).all();
-
-    const todayBlocks = await db.prepare(
-      `SELECT tb.*, t.title as task_title, t.status as task_status
-       FROM time_blocks tb
-       LEFT JOIN tasks t ON tb.task_id = t.id
-       WHERE tb.user_id = ? AND tb.block_date = ?
-       ORDER BY tb.start_time`
-    ).bind(userId, today).all();
-
-    const recentEmotion = await db.prepare(
-      'SELECT * FROM emotions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
-    ).bind(userId).first();
-
-    const weeklyStats = await db.prepare(
-      `SELECT stat_date, tasks_created, tasks_started, tasks_completed, micro_starts_count, procrastination_count, pomodoro_count
-       FROM daily_stats WHERE user_id = ? AND stat_date >= date('now', '-7 days')
-       ORDER BY stat_date`
-    ).bind(userId).all();
+    const cacheKey = 'dash_' + userId;
     
-    // 获取每周情绪摘要
-    const weeklyEmotions = await db.prepare(
-      `SELECT date(created_at) as emotion_date, emotion_type, COUNT(*) as count
-       FROM emotions WHERE user_id = ? AND date(created_at) >= date('now', '-7 days')
-       GROUP BY emotion_date, emotion_type
-       ORDER BY emotion_date`
-    ).bind(userId).all();
+    // KV 缓存：30秒有效，加 ?fresh=1 跳过缓存
+    var url = new URL(req.url);
+    if (env.CACHE && url.searchParams.get('fresh') !== '1') {
+      try {
+        var cached = await env.CACHE.get(cacheKey, 'json');
+        if (cached) return jsonResponse(cached);
+      } catch (e) { /* 缓存miss则正常查询 */ }
+    }
+
+    // 并行查询所有仪表盘数据
+    const [todayStats, pendingTasks, todayBlocks, recentEmotion, weeklyStatsResult, weeklyEmotionsResult, todayPomoResult, upcomingTasksResult] = await Promise.all([
+      db.prepare('SELECT * FROM daily_stats WHERE user_id = ? AND stat_date = ?').bind(userId, today).first(),
+      db.prepare(`SELECT * FROM tasks WHERE user_id = ? AND status IN ('pending', 'in_progress') ORDER BY difficulty ASC, created_at DESC LIMIT 5`).bind(userId).all(),
+      db.prepare(`SELECT tb.*, t.title as task_title, t.status as task_status FROM time_blocks tb LEFT JOIN tasks t ON tb.task_id = t.id WHERE tb.user_id = ? AND tb.block_date = ? ORDER BY tb.start_time`).bind(userId, today).all(),
+      db.prepare('SELECT * FROM emotions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').bind(userId).first(),
+      db.prepare(`SELECT stat_date, tasks_created, tasks_started, tasks_completed, micro_starts_count, procrastination_count, pomodoro_count FROM daily_stats WHERE user_id = ? AND stat_date >= date('now', '-7 days') ORDER BY stat_date`).bind(userId).all(),
+      db.prepare(`SELECT date(created_at) as emotion_date, emotion_type, COUNT(*) as count FROM emotions WHERE user_id = ? AND date(created_at) >= date('now', '-7 days') GROUP BY emotion_date, emotion_type ORDER BY emotion_date`).bind(userId).all(),
+      db.prepare(`SELECT COUNT(*) as count, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as completed FROM pomodoro_sessions WHERE user_id = ? AND date(created_at) = ?`).bind(userId, today).first(),
+      db.prepare(`SELECT * FROM tasks WHERE user_id = ? AND status != 'completed' AND due_date IS NOT NULL AND (due_date <= date('now', '+3 days')) ORDER BY due_date ASC LIMIT 10`).bind(userId).all()
+    ]);
     
-    // 将情绪数据附加到 weeklyStats
-    const weeklyStatsWithEmotions = (weeklyStats.results || []).map(stat => {
-      const dayEmotions = (weeklyEmotions.results || []).filter(e => e.emotion_date === stat.stat_date);
+    // 合并情绪数据到周统计
+    const weeklyStatsWithEmotions = (weeklyStatsResult.results || []).map(stat => {
+      const dayEmotions = (weeklyEmotionsResult.results || []).filter(e => e.emotion_date === stat.stat_date);
       const topEmotion = dayEmotions.sort((a, b) => b.count - a.count)[0];
       return { ...stat, emotion_type: topEmotion ? topEmotion.emotion_type : null };
     });
-
-    const todayPomodoro = await db.prepare(
-      `SELECT COUNT(*) as count, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as completed
-       FROM pomodoro_sessions WHERE user_id = ? AND date(created_at) = ?`
-    ).bind(userId, today).first();
-
-    // 获取即将到期任务（今天到期或已过期但未完成）
-    const upcomingTasks = await db.prepare(
-      `SELECT * FROM tasks 
-       WHERE user_id = ? AND status != 'completed' AND due_date IS NOT NULL 
-       AND (due_date <= date('now', '+3 days')) 
-       ORDER BY due_date ASC 
-       LIMIT 10`
-    ).bind(userId).all();
     
     // 数据可视化需要的数据（每个表单独容错）
     const safeQuery = async (table) => {
@@ -1420,22 +1404,29 @@ router.get('/api/dashboard', async (req, env) => {
     const allMicroStarts = await safeQuery('micro_starts');
     const allPomodoro = await safeQuery('pomodoro_sessions');
     
-    return jsonResponse({
+    var respData = {
       success: true,
       todayStats: todayStats || { tasks_created: 0, tasks_started: 0, tasks_completed: 0, micro_starts_count: 0, procrastination_count: 0, pomodoro_count: 0 },
       pendingTasks: pendingTasks.results || [],
       todayBlocks: todayBlocks.results || [],
       recentEmotion,
       weeklyStats: weeklyStatsWithEmotions || [],
-      todayPomodoro: todayPomodoro || { count: 0, completed: 0 },
-      upcomingTasks: upcomingTasks.results || [],
+      todayPomodoro: todayPomoResult || { count: 0, completed: 0 },
+      upcomingTasks: upcomingTasksResult.results || [],
       tasks: allTasks,
       emotions: allEmotions,
       commitments: allCommitments,
       diary: allDiary,
       microStarts: allMicroStarts,
       pomodoro: allPomodoro
-    });
+    };
+    
+    // 写入 KV 缓存（30秒过期）
+    if (env.CACHE) {
+      try { await env.CACHE.put(cacheKey, JSON.stringify(respData), { expirationTtl: 30 }); } catch(e) { /* 缓存写入失败不影响返回 */ }
+    }
+    
+    return jsonResponse(respData);
   } catch (e) {
     return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
   }
@@ -2864,6 +2855,7 @@ router.post('/api/weekly-plans/sync-to-tasks', async (req, env) => {
       await db.prepare('UPDATE weekly_plans SET sync_token = ? WHERE id = ?').bind('synced_' + now, plan.id).run();
     }
     
+    await clearDashCache(env, userId);
     return jsonResponse({ success: true, synced, skipped, updated, total: plans.length, message: `同步完成：新增 ${synced} 个，更新 ${updated} 个，跳过 ${skipped} 个重复` });
   } catch (e) {
     return jsonResponse({ error: '同步失败: ' + e.message }, 500);

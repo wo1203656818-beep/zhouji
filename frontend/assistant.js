@@ -10,7 +10,7 @@ var cbtMoods = [
   { key: 'guilty', icon: '😞', label: '内疚' },
 ];
 
-async function renderAssistant() {
+window.renderAssistant = async function() {
   var div = el('div', 'p-3 md:p-6 max-w-5xl mx-auto fade-in');
   var recent = await loadRecentCbt();
 
@@ -189,13 +189,24 @@ window.searchMusic = async function() {
       document.getElementById('music-search-results').innerHTML = '<div class="text-center py-4 text-gray-400"><i class="fas fa-music text-xl mb-1"></i><p class="text-[10px]">未找到结果</p></div>';
       showToast('未找到结果', 'info'); return;
     }
-    document.getElementById('music-search-results').innerHTML = resp.songs.map(function(song) {
+    document.getElementById('music-search-results').innerHTML = resp.songs.map(function(song, idx) {
       var min = Math.floor(song.duration / 1000 / 60), sec = Math.floor(song.duration / 1000 % 60);
-      return '<div class="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:border-rose-400/50 cursor-pointer transition-all" onclick="playSong(' + song.id + ",'" + (song.name||'').replace(/'/g,"\\'") + "','" + (song.artists||'').replace(/'/g,"\\'") + "','" + (song.embedUrl||'').replace(/'/g,"\\'") + "')">' +
+      var safeName = (song.name||'').replace(/'/g,'').replace(/"/g,'');
+      var safeArtist = (song.artists||'').replace(/'/g,'').replace(/"/g,'');
+      var safeUrl = (song.embedUrl||'').replace(/'/g,'').replace(/"/g,'');
+      return '<div class="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:border-rose-400/50 cursor-pointer transition-all song-item" data-idx="' + idx + '">' +
         '<div class="flex items-center gap-2"><div class="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-900/20 flex items-center justify-center text-rose-500 shrink-0"><i class="fas fa-play" style="font-size:9px"></i></div>' +
-        '<div class="flex-1 min-w-0"><p class="text-xs font-medium text-gray-800 dark:text-white truncate">' + (song.name||'') + '</p><p class="text-[10px] text-gray-500 truncate">' + (song.artists||'') + '</p></div>' +
+        '<div class="flex-1 min-w-0"><p class="text-xs font-medium text-gray-800 dark:text-white truncate">' + safeName + '</p><p class="text-[10px] text-gray-500 truncate">' + safeArtist + '</p></div>' +
         '<span class="text-[10px] text-gray-400">' + (min<10?'0':'')+min+':'+(sec<10?'0':'')+sec+'</span></div></div>';
     }).join('');
+    // 绑定点击事件
+    var _songs = resp.songs;
+    document.querySelectorAll('.song-item').forEach(function(el, i) {
+      el.onclick = function() {
+        var s = _songs[i];
+        if (s) playSong(s.id, s.name, s.artists, s.embedUrl);
+      };
+    });
   } catch (err) {
     document.getElementById('music-search-results').innerHTML = '<div class="text-center py-4 text-gray-400"><i class="fas fa-exclamation-circle text-xl mb-1"></i><p class="text-[10px]">搜索失败</p></div>';
   }
@@ -215,5 +226,3 @@ window.closeMusicPlayer = function() {
   document.getElementById('music-player-container').style.display = 'none';
   document.getElementById('music-player').style.display = 'none';
 };
-
-window.renderAssistant = renderAssistant;

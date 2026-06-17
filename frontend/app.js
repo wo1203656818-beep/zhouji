@@ -898,35 +898,35 @@ async function renderDashboard() {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-3 max-w-full overflow-hidden">
-        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
-          <span class="text-xs text-gray-400 dark:text-gray-500 block">今日任务</span>
-          <span class="block text-lg font-bold text-gray-800 dark:text-white">${todayTasksTotal}</span>
-          <span class="text-xs text-gray-400">完成 ${todayTasksCompleted}</span>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 md:gap-2 mb-3 max-w-full overflow-hidden">
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2 md:p-2.5 text-center shadow-sm">
+          <span class="text-[10px] md:text-xs text-gray-400 dark:text-gray-500 block">今日任务</span>
+          <span class="block text-base md:text-lg font-bold text-gray-800 dark:text-white">${todayTasksTotal}</span>
+          <span class="text-[10px] md:text-xs text-gray-400">完成 ${todayTasksCompleted}</span>
         </div>
-        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
-          <span class="text-xs text-gray-400 dark:text-gray-500 block">微启动</span>
-          <span class="block text-lg font-bold text-gray-800 dark:text-white">${stats.micro_starts_count || 0}</span>
-          <span class="text-xs text-gray-400">2分钟契约</span>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2 md:p-2.5 text-center shadow-sm">
+          <span class="text-[10px] md:text-xs text-gray-400 dark:text-gray-500 block">微启动</span>
+          <span class="block text-base md:text-lg font-bold text-gray-800 dark:text-white">${stats.micro_starts_count || 0}</span>
+          <span class="text-[10px] md:text-xs text-gray-400">2分钟</span>
         </div>
-        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
-          <span class="text-xs text-gray-400 dark:text-gray-500 block">番茄钟</span>
-          <span class="block text-lg font-bold text-gray-800 dark:text-white">${totalPomo}</span>
-          <span class="text-xs text-gray-400">${todayPomo.completed || 0} 完成</span>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2 md:p-2.5 text-center shadow-sm">
+          <span class="text-[10px] md:text-xs text-gray-400 dark:text-gray-500 block">番茄钟</span>
+          <span class="block text-base md:text-lg font-bold text-gray-800 dark:text-white">${totalPomo}</span>
+          <span class="text-[10px] md:text-xs text-gray-400">${todayPomo.completed || 0} 完成</span>
         </div>
-        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
-          <span class="text-xs text-gray-400 dark:text-gray-500 block">拖延记录</span>
-          <span class="block text-lg font-bold text-gray-800 dark:text-white">${stats.procrastination_count || 0}</span>
-          <span class="text-xs text-gray-400">今日觉察</span>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2 md:p-2.5 text-center shadow-sm">
+          <span class="text-[10px] md:text-xs text-gray-400 dark:text-gray-500 block">拖延</span>
+          <span class="block text-base md:text-lg font-bold text-gray-800 dark:text-white">${stats.procrastination_count || 0}</span>
+          <span class="text-[10px] md:text-xs text-gray-400">今日觉察</span>
         </div>
-        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
-          <span class="text-xs text-gray-400 dark:text-gray-500 block">启动率</span>
-          <span class="block text-lg font-bold text-gray-800 dark:text-white">${startRate}%</span>
-          <span class="text-xs text-gray-400">本周</span>
+        <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2 md:p-2.5 text-center shadow-sm">
+          <span class="text-[10px] md:text-xs text-gray-400 dark:text-gray-500 block">启动率</span>
+          <span class="block text-base md:text-lg font-bold text-gray-800 dark:text-white">${startRate}%</span>
+          <span class="text-[10px] md:text-xs text-gray-400">本周</span>
         </div>
       </div>
 
-      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
         <div class="lg:col-span-2 space-y-3">
           <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
             <div class="flex items-center justify-between mb-2">

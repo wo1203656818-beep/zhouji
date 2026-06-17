@@ -23,7 +23,9 @@ export class Router {
 
   _pathToPattern(path) {
     // 将 /api/tasks/:id 转换为正则表达式
-    const regex = path.replace(/:([^/]+)/g, '([^/]+)');
+    // :key+ 匹配多段路径（含 /），:key 匹配单段
+    let regex = path.replace(/:([^/]+)\+/g, '(.+)');
+    regex = regex.replace(/:([^/]+)/g, '([^/]+)');
     return new RegExp(`^${regex}$`);
   }
 
@@ -40,7 +42,7 @@ export class Router {
         const paramNames = route.path.match(/:([^/]+)/g);
         if (paramNames) {
           paramNames.forEach((name, index) => {
-            const key = name.slice(1);
+            const key = name.slice(1).replace(/\+$/, ''); // 去掉 :key+ 末尾的 +
             params[key] = match[index + 1];
           });
         }

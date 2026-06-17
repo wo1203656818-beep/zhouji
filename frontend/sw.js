@@ -1,20 +1,26 @@
 // 周迹 Service Worker - 实现 PWA 离线功能 (修复 FE-016)
-const CACHE_NAME = 'zhouji-v2.2';
+const CACHE_NAME = 'zhouji-v2.3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/app.js',
   '/manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
+  // 注意: CDN 资源不加入缓存，避免版本锁定和跨域问题
 ];
 
 // 安装时缓存静态资源
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    }).catch(err => {
+      // 逐个缓存，单个失败不影响其他
+      return Promise.allSettled(
+        STATIC_ASSETS.map(function(url) {
+          return cache.add(url).catch(function(err) {
+            console.warn('SW cache skip:', url, err.message);
+          });
+        })
+      );
+    }).catch(function(err) {
       console.warn('SW cache failed:', err);
     })
   );
@@ -40,15 +46,19 @@ self.addEventListener('fetch', (event) => {
   // 跳过非 GET 请求和 API 请求
   if (event.request.method !== 'GET') return;
   if (event.request.url.includes('/api/')) return;
+  // 修复: 跳过非 http/https 协议（如 chrome-extension://）
+  if (!event.request.url.startsWith('http')) return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // 缓存成功的响应
-        if (response.ok) {
+        // 缓存成功的响应（只缓存同源请求）
+        if (response.ok && event.request.url.startsWith(self.location.origin)) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);
+          }).catch(function(err) {
+            // 缓存失败静默处理（如扩展协议请求）
           });
         }
         return response;

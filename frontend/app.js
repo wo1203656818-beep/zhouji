@@ -63,8 +63,8 @@ function getApiBase() {
     return deployUrl;
   }
   
-  // 3. 返回空，需要在登录页手动配置
-  return '';
+  // 3. 默认使用已知的 API 地址
+  return 'https://zhouji-api.wo1203656818.workers.dev';
 }
 const DARK_MODE = safeStorage.get('dark_mode') === 'true';
 
@@ -200,9 +200,6 @@ function hideLoading() { loadingCounter = Math.max(0, loadingCounter - 1); if (l
 
 // API 封装（带 loading 和错误处理）
 const api = {
-  _offlineQueue: [],
-  _isOnline: navigator.onLine,
-
   async request(method, endpoint, body, options) {
     if (body === void 0) { body = null; }
     if (options === void 0) { options = {}; }
@@ -214,12 +211,7 @@ const api = {
     var headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
-    if (!this._isOnline && method !== 'GET') {
-      this._offlineQueue.push({ method: method, endpoint: endpoint, body: body, timestamp: Date.now() });
-      safeStorage.set('offline_queue', JSON.stringify(this._offlineQueue));
-      hideLoading();
-      throw new Error('当前处于离线模式，请求已加入队列，恢复后自动同步');
-    }
+    // 已移除离线模式功能
 
     var lastError;
     for (var attempt = 0; attempt <= retries; attempt++) {
@@ -260,12 +252,7 @@ const api = {
         var data = await res.json();
         if (!res.ok) throw new Error(data.error || data.message || 'HTTP ' + res.status);
 
-        // 请求成功，恢复在线状态
-        this._isOnline = true;
-
-        if (this._offlineQueue.length > 0 && navigator.onLine) {
-          this._syncOfflineQueue();
-        }
+        // 请求成功
 
         hideLoading();
         return data;
@@ -274,10 +261,6 @@ const api = {
         if (err.name === 'AbortError') {
           console.warn('请求超时，重试中...');
         } else if (err.message && err.message.includes('Failed to fetch')) {
-          this._isOnline = false;
-          if (method !== 'GET') {
-            this._offlineQueue.push({ method: method, endpoint: endpoint, body: body, timestamp: Date.now() });
-          }
           hideLoading();
           throw new Error('无法连接到服务器，请检查 API 地址或网络连接');
         } else if (attempt < retries && !err.message.includes('认证')) {
@@ -291,48 +274,21 @@ const api = {
     throw lastError;
   },
 
-  async _syncOfflineQueue() {
-    if (this._offlineQueue.length === 0 || !navigator.onLine) return;
-    // 临时恢复在线状态，否则 request() 会再次拦截
-    this._isOnline = true;
-    var queue = this._offlineQueue.slice();
-    this._offlineQueue = [];
-    safeStorage.remove('offline_queue');
-    var syncCount = 0;
-    for (var i = 0; i < queue.length; i++) {
-      try {
-        await this.request(queue[i].method, queue[i].endpoint, queue[i].body, { retries: 1 });
-        syncCount++;
-      } catch (e) {
-        console.error('离线同步失败:', e);
-      }
-    }
-    if (syncCount > 0) showToast(syncCount + '条离线数据已同步', 'success');
-  },
+
   get: (e) => api.request('GET', e),
   post: (e, b) => api.request('POST', e, b),
   put: (e, b) => api.request('PUT', e, b),
   del: (e) => api.request('DELETE', e)
 };
 
-// 监听网络状态变化，自动恢复在线标识
-window.addEventListener('online', function() {
-  api._isOnline = true;
-  console.log('网络已恢复');
-  api._syncOfflineQueue();
-});
-window.addEventListener('offline', function() {
-  api._isOnline = false;
-  console.log('网络已断开');
-});
+
 
 // 状态
 const state = {
   user: null, currentPage: 'dashboard', pageParams: {},
   tasks: [], emotions: [], microStarts: [], logs: [],
   commitments: [], timeBlocks: [], pomodoro: [],
-  timer: null, timerSeconds: 0, timerTotal: 120, timerRunning: false,
-  pomodoroTimer: null, pomodoroSeconds: 0, pomodoroRunning: false, pomodoroMode: 'work',
+  timer: null, pomodoroTimer: null, pomodoroMode: 'work',
   activeTask: null, activeStep: null,
   darkMode: DARK_MODE
 };
@@ -372,27 +328,33 @@ function saveTimerState() {
 // 路由
 const routes = {
   'login': renderLogin, 'dashboard': renderDashboard,
-  'emotion': renderEmotion, 'tasks': renderTasks,
-  'task-detail': renderTaskDetail, 'micro-start': renderMicroStart,
-  'pomodoro': renderPomodoro, 'lab': renderLab,
-  'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
-  'time-blocks': renderTimeBlocks,
+  'weekly': function() { return (window.renderWeekly || function(){return el('div','<p class="text-center py-12">周视图加载中...</p>');}).apply(this, arguments); },
+  'tasks': renderTasks, 'task-detail': renderTaskDetail,
+  'micro-start': renderMicroStart,
   'diary': function() { return (window.renderDiary || renderDiary).apply(this, arguments); },
+  'pomodoro': renderPomodoro,
+  'emotion': renderEmotion,
   'stats': function() { return (window.renderStats || renderStats).apply(this, arguments); },
+  'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
+  'time-blocks': renderTimeBlocks, 'lab': renderLab,
   'assistant': function() { return (window.renderAssistant || renderAssistant).apply(this, arguments); },
   'achievements': function() { return (window.renderAchievements || renderAchievements).apply(this, arguments); },
   'settings': renderSettings
 };
 
+// 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
+var _navigateHash = '';
+
 function navigate(page, params = {}) {
   state.currentPage = page;
   state.pageParams = params;
-  // 修复 Bug3: 将参数写入URL hash，刷新后不丢失
   var hashPath = '#/' + page;
   if (params.id) hashPath += '/' + params.id;
-  // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
+  
+  // 修复: 先保存当前 hash，设置新 hash 后立即调用 render，不用 setTimeout
   _navigateHash = hashPath;
   window.location.hash = hashPath;
+  
   // 修复: 导航时平滑滚动到顶部，不影响浏览器前进/后退
   if (!window._isBackForward) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -418,93 +380,300 @@ async function render() {
 
   const renderer = routes[page] || renderDashboard;
   
-  // 修复: 页面过渡动画 — 先淡出再渲染
-  if (state.currentPage && state.currentPage !== page) {
+  // 修复: 页面过渡动画 — 先淡出再渲染（延迟清空让淡出可见）
+  if (state.currentPage && state.currentPage !== page && app.children.length > 0) {
+    app.style.transition = 'opacity 0.12s ease, transform 0.12s ease';
     app.style.opacity = '0';
-    app.style.transform = 'translateY(8px)';
-    app.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
-    // 不阻塞，直接继续渲染
+    app.style.transform = 'translateY(6px)';
+    // 等待淡出完成后再清空
+    await new Promise(r => setTimeout(r, 130));
   }
 
   // 修复 Bug6: await 渲染结果，兼容 sync/async 渲染函数
-  const content = await renderer();
+  let content;
+  try {
+    content = await renderer();
+  } catch (err) {
+    console.error('页面渲染失败:', err);
+    content = el('div', 'flex items-center justify-center min-h-[50vh]');
+    content.innerHTML = `<div class="text-center p-8"><i class="fas fa-exclamation-triangle text-4xl text-danger mb-4"></i><h3 class="text-lg font-bold text-gray-800 dark:text-white mb-2">页面加载失败</h3><p class="text-sm text-gray-500 mb-4">${escapeHtml(err.message || '未知错误')}</p><button onclick="navigate('dashboard')" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-all"><i class="fas fa-home mr-1"></i>返回首页</button></div>`;
+  }
   
   // 修复: 清除旧内容并用淡入显示新内容
   app.innerHTML = '';
-  // 淡入新页面
+  // 淡入新页面（移除过渡让瞬时切换无动画残留）
   setTimeout(function() {
+    app.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
     app.style.opacity = '1';
     app.style.transform = 'translateY(0)';
-  }, 10);
+  }, 15);
   
   if (page !== 'login') {
     app.appendChild(renderNav());
-    const main = el('main', 'pb-20 md:pb-0 md:ml-64 min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors');
+    // 移动端导航挂到 body 上，避免 #app 的 transform 影响 fixed 定位
+    renderMobileNav();
+    const main = el('main', 'main-content p-4 md:p-6 lg:p-8 transition-colors');
     main.appendChild(content);
     app.appendChild(main);
   } else {
+    // 登录页隐藏移动端导航
+    const mobileNav = document.querySelector('.bottom-nav');
+    if (mobileNav) mobileNav.style.display = 'none';
     app.appendChild(content);
   }
 
   initPageInteractions(page);
+  
+  // 窗口大小变化时重新渲染，适配移动端/桌面端（仅首次绑定）
+  // ⚠️ 关键修复：移动端键盘弹出只改变高度不改变宽度，不需要重渲染
+  // 重渲染会导致 input 失去焦点，键盘关闭 → 用户无法输入
+  if (!window._resizeHandlerAttached) {
+    window._resizeHandlerAttached = true;
+    var lastWidth = window.innerWidth;
+    window.addEventListener('resize', function() {
+      var newWidth = window.innerWidth;
+      // 仅当宽度变化（横屏/竖屏切换）时才重渲染，键盘弹出（仅高度变化）不触发
+      if (newWidth === lastWidth) return;
+      lastWidth = newWidth;
+      clearTimeout(window.resizeTimer);
+      window.resizeTimer = setTimeout(function() {
+        render();
+      }, 200);
+    });
+  }
 }
 
-// 导航栏
+// 导航栏 - 商业级现代设计
 function renderNav() {
-  const nav = el('nav', 'fixed bottom-0 left-0 right-0 md:fixed md:top-0 md:left-0 md:bottom-0 md:w-64 bg-white dark:bg-gray-800 md:border-r border-gray-200 dark:border-gray-700 z-40 shadow-lg md:shadow-none transition-colors');
+  const nav = el('nav', 'sidebar');
+  const isMobile = window.innerWidth < 768;
+  if (isMobile) {
+    nav.classList.add('sidebar-mobile');
+    nav.style.transform = 'translateX(-260px)';
+  }
 
-  const items = [
-    { id: 'dashboard', icon: 'fa-chart-line', label: '仪表盘' },
-    { id: 'diary', icon: 'fa-book', label: '日记' },
-    { id: 'emotion', icon: 'fa-heart', label: '情绪舱' },
+  const desktopItems = [
+    { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务台' },
     { id: 'micro-start', icon: 'fa-play-circle', label: '微启动' },
+    { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄钟' },
-    { id: 'lab', icon: 'fa-flask', label: '实验室' },
+    { id: 'emotion', icon: 'fa-heart', label: '情绪舱' },
+    { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
     { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
-    { id: 'stats', icon: 'fa-chart-bar', label: '数据可视化' },
+    { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
     { id: 'achievements', icon: 'fa-trophy', label: '成就' },
   ];
+  
+  const mobileItems = [
+    { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
+    { id: 'tasks', icon: 'fa-tasks', label: '任务' },
+    { id: 'micro-start', icon: 'fa-play', label: '启动' },
+    { id: 'diary', icon: 'fa-book', label: '日记' },
+    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
+  ];
+  
   const current = state.currentPage;
 
-  let html = `<div class="flex md:flex-col overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide justify-start md:justify-start md:p-4 h-16 md:h-full items-center md:items-stretch px-2 md:px-0 gap-1 md:gap-0">`;
+  let html = `<div class="flex flex-col h-full">`;
 
+  // Logo 区域
   html += `
-    <div class="hidden md:flex items-center gap-3 px-4 py-6 mb-4">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg">周</div>
-      <div><h1 class="font-bold text-gray-800 dark:text-white">周迹</h1><p class="text-xs text-gray-500 dark:text-gray-400">管理启动</p></div>
+    <div class="sidebar-brand">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-indigo-400 flex items-center justify-center text-white font-bold text-lg shadow-md">周</div>
+        <div>
+          <h1 class="font-bold text-base text-gray-800 dark:text-white tracking-tight">周迹</h1>
+          <p class="text-xs text-gray-400 dark:text-gray-500">管理启动</p>
+        </div>
+      </div>
     </div>
   `;
 
-  items.forEach(item => {
-    const active = current === item.id ? 'text-primary bg-primary/5 dark:bg-primary/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50';
+  // 导航项
+  html += `<div class="sidebar-nav">`;
+  desktopItems.forEach(item => {
+    const active = current === item.id ? 'active' : '';
     html += `
-      <button onclick="navigate('${item.id}')" class="touch-btn flex flex-col md:flex-row items-center md:gap-3 md:px-4 md:py-3 rounded-xl transition-all snap-start flex-shrink-0 min-w-[4.5rem] md:min-w-0 px-2 py-1 ${active}">
-        <i class="fas ${item.icon} text-lg md:text-xl mb-0.5 md:mb-0"></i>
-        <span class="text-[10px] sm:text-xs md:text-sm font-medium truncate">${item.label}</span>
+      <button onclick="navigate('${item.id}')" class="nav-item ${active}">
+        <i class="fas ${item.icon}"></i>
+        <span>${item.label}</span>
       </button>
     `;
   });
+  html += `</div>`;
 
+  // 底部操作
   html += `
-    <div class="hidden md:block mt-auto">
-      <button onclick="toggleDarkMode()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all w-full">
-        <i class="fas fa-${state.darkMode ? 'sun' : 'moon'} text-lg"></i>
-        <span class="text-sm font-medium">${state.darkMode ? '浅色' : '深色'}</span>
+    <div class="mt-auto px-3 pb-4 pt-2 border-t border-gray-100 dark:border-gray-700/50 mx-3">
+      <button onclick="toggleDarkMode()" class="nav-item w-full justify-start">
+        <i class="fas fa-${state.darkMode ? 'sun' : 'moon'}"></i>
+        <span>${state.darkMode ? '浅色模式' : '深色模式'}</span>
       </button>
-      <button onclick="navigate('settings')" class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all w-full">
-        <i class="fas fa-cog text-lg"></i><span class="text-sm font-medium">设置</span>
+      <button onclick="navigate('settings')" class="nav-item w-full justify-start">
+        <i class="fas fa-cog"></i>
+        <span>设置</span>
       </button>
-      <button onclick="logout()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-500 dark:text-gray-400 hover:text-danger hover:bg-red-50 dark:hover:bg-red-900/20 transition-all w-full">
-        <i class="fas fa-sign-out-alt text-lg"></i><span class="text-sm font-medium">退出</span>
+      <button onclick="logout()" class="nav-item w-full justify-start text-danger hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>退出登录</span>
       </button>
     </div>
   </div>`;
 
   nav.innerHTML = html;
   return nav;
+}
+
+// 渲染移动端底部导航 - 单例模式，挂到 body 上避免 transform 影响 fixed 定位
+function renderMobileNav() {
+  // 单例：复用已存在的 bottom-nav
+  let nav = document.querySelector('.bottom-nav');
+  const isMobile = window.innerWidth <= 768;
+  const current = state.currentPage;
+
+  if (!nav) {
+    nav = document.createElement('nav');
+    nav.className = 'bottom-nav';
+    document.body.appendChild(nav);
+  }
+
+  nav.style.display = isMobile ? 'flex' : 'none';
+
+  // 移动端只显示 5 个核心 tab + "更多" 弹出面板
+  const mobileItems = [
+    { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
+    { id: 'tasks', icon: 'fa-tasks', label: '任务' },
+    { id: 'micro-start', icon: 'fa-play', label: '启动' },
+    { id: 'diary', icon: 'fa-book', label: '日记' },
+    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
+  ];
+
+  let html = '';
+  mobileItems.forEach(item => {
+    const isActive = current === item.id;
+    const activeClass = isActive ? 'bottom-nav-active' : '';
+    html += `
+      <button onclick="navigate('${item.id}')" class="bottom-nav-item ${activeClass}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:4px 2px;cursor:pointer;color:${isActive ? '#10b981' : '#6b7280'};font-size:11px;-webkit-tap-highlight-color:transparent;">
+        <i class="fas ${item.icon}" style="font-size:18px;"></i>
+        <span>${item.label}</span>
+      </button>
+    `;
+  });
+
+  // "更多" 按钮：点击弹出额外选项面板
+  html += `
+    <button onclick="toggleMobileMorePanel()" class="bottom-nav-item" id="mobile-more-btn" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:4px 2px;cursor:pointer;color:#6b7280;font-size:11px;-webkit-tap-highlight-color:transparent;">
+      <i class="fas fa-ellipsis-h" style="font-size:18px;"></i>
+      <span>更多</span>
+    </button>
+  `;
+
+  nav.innerHTML = html;
+  return nav;
+}
+
+// 移动端"更多"弹出面板
+function toggleMobileMorePanel() {
+  let panel = document.querySelector('.mobile-more-panel');
+  if (panel) { panel.remove(); return; }
+
+  panel = document.createElement('div');
+  panel.className = 'mobile-more-panel';
+  const isDark = state.darkMode;
+  panel.style.cssText = `
+    position: fixed !important;
+    bottom: 70px !important;
+    left: 12px !important;
+    right: 12px !important;
+    z-index: 100000 !important;
+    background: ${isDark ? '#1f2937' : '#ffffff'};
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  `;
+
+  const moreItems = [
+    { id: 'diary', icon: 'fa-book', label: '日记' },
+    { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
+    { id: 'achievements', icon: 'fa-trophy', label: '成就' },
+    { id: 'assistant', icon: 'fa-robot', label: '助手' },
+    { id: 'settings', icon: 'fa-cog', label: '设置' },
+    { id: 'lab', icon: 'fa-flask', label: '实验室' },
+    { id: 'share', icon: 'fa-share-alt', label: '分享' },
+    { action: 'darkMode', icon: isDark ? 'fa-sun' : 'fa-moon', label: isDark ? '亮色' : '暗色' },
+  ];
+
+  moreItems.forEach(item => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;padding:10px 4px;cursor:pointer;color:' + (isDark ? '#d1d5db' : '#374151') + ';font-size:12px;border-radius:12px;transition:background 0.15s;-webkit-tap-highlight-color:transparent;';
+    btn.innerHTML = '<i class="fas ' + item.icon + '" style="font-size:22px;color:#10b981;"></i><span>' + item.label + '</span>';
+    btn.onclick = function() {
+      panel.remove();
+      if (item.action === 'darkMode') {
+        toggleDarkMode();
+      } else if (item.id) {
+        navigate(item.id);
+      }
+    };
+    btn.ontouchstart = function() { this.style.background = isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.05)'; };
+    btn.ontouchend = function() { this.style.background = 'none'; };
+    panel.appendChild(btn);
+  });
+
+  // 点击面板外关闭
+  setTimeout(function() {
+    const closePanel = function(e) {
+      if (!panel.contains(e.target) && e.target.id !== 'mobile-more-btn') {
+        panel.remove();
+        document.removeEventListener('click', closePanel);
+      }
+    };
+    document.addEventListener('click', closePanel);
+  }, 10);
+
+  document.body.appendChild(panel);
+}
+
+// 移动端切换侧边栏 - 用transform，100%可靠！
+function toggleMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  let overlay = document.querySelector('.sidebar-overlay');
+  
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'sidebar-overlay';
+    overlay.onclick = toggleMobileSidebar;
+    document.body.appendChild(overlay);
+  }
+  
+  if (sidebar) {
+    // 用 transform 动画，100%可靠！
+    const transform = sidebar.style.transform;
+    const isOpen = transform === 'translateX(0px)' || transform === 'translateX(0)';
+    
+    sidebar.style.position = 'fixed';
+    sidebar.style.top = '0';
+    sidebar.style.bottom = '0';
+    sidebar.style.width = '280px';
+    sidebar.style.zIndex = '99999';
+    sidebar.style.transition = 'transform 0.3s ease';
+    
+    if (isOpen) {
+      // 关闭：移到屏幕外
+      sidebar.style.transform = 'translateX(-280px)';
+      overlay.classList.remove('show');
+    } else {
+      // 打开：移到屏幕内
+      sidebar.style.transform = 'translateX(0)';
+      overlay.classList.add('show');
+    }
+  }
 }
 
 function toggleDarkMode() {
@@ -514,50 +683,48 @@ function toggleDarkMode() {
   render();
 }
 
-// ========== 登录页 ==========
+// ========== 登录页 - 商业级设计 ==========
 function renderLogin() {
-  const div = el('div', 'min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 dark:from-primary/10 dark:to-secondary/10 p-4');
+  const div = el('div', 'login-container');
   div.innerHTML = `
-    <div class="w-full max-w-md">
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 fade-in border border-gray-100 dark:border-gray-700">
-        <div class="text-center mb-8">
-          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">周</div>
-          <h1 class="text-2xl font-bold text-gray-800 dark:text-white">周迹</h1>
-          <p class="text-gray-500 dark:text-gray-400 mt-1">不是管理时间，是管理启动</p>
-        </div>
-        <div id="login-form">
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>
-            <input type="text" id="login-username" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="请输入用户名" onkeydown="if(event.key==='Enter')handleLogin()">
-          </div>
-          <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
-            <input type="password" id="login-password" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="至少6位" onkeydown="if(event.key==='Enter')handleLogin()">
-          </div>
-          <button onclick="handleLogin()" class="w-full bg-primary text-white py-3 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 touch-btn">进入系统</button>
-          <p class="text-center mt-4 text-sm text-gray-500 dark:text-gray-400">还没有账号？<button onclick="toggleAuthMode()" class="text-primary font-medium">立即注册</button></p>
-        </div>
-        <div id="register-form" class="hidden">
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>
-            <input type="text" id="reg-username" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="至少3位" onkeydown="if(event.key==='Enter')handleRegister()">
-          </div>
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
-            <input type="password" id="reg-password" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="至少6位" onkeydown="if(event.key==='Enter')handleRegister()">
-          </div>
-          <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">邮箱（可选）</label>
-            <input type="email" id="reg-email" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="your@email.com">
-          </div>
-          <button onclick="handleRegister()" class="w-full bg-secondary text-white py-3 rounded-xl font-medium hover:bg-secondary/90 transition-all shadow-lg shadow-secondary/25 touch-btn">创建账号</button>
-          <p class="text-center mt-4 text-sm text-gray-500 dark:text-gray-400">已有账号？<button onclick="toggleAuthMode()" class="text-primary font-medium">直接登录</button></p>
-        </div>
-        <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
-          <p class="text-xs text-gray-400 text-center">API 地址</p>
-          <input type="text" id="api-base-input" value="${getApiBase()}" class="w-full mt-1 px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 text-gray-500 focus:border-primary outline-none" placeholder="https://your-api.workers.dev">
-        </div>
+    <div class="login-card fade-in">
+      <div class="login-brand">
+        <div class="login-brand-icon">周</div>
+        <h1>周迹</h1>
+        <p>不是管理时间，是管理启动</p>
       </div>
+      <div id="login-form">
+        <div class="mb-4">
+          <input type="text" id="login-username" class="input-modern" placeholder="用户名" onkeydown="if(event.key==='Enter')handleLogin()" autocomplete="username">
+        </div>
+        <div class="mb-6">
+          <input type="password" id="login-password" class="input-modern" placeholder="密码（至少6位）" onkeydown="if(event.key==='Enter')handleLogin()" autocomplete="current-password">
+        </div>
+        <button onclick="handleLogin()" class="btn-modern w-full text-base py-3">进入系统</button>
+        <p class="text-center mt-5 text-sm text-gray-500 dark:text-gray-400">还没有账号？<button onclick="toggleAuthMode()" class="text-primary font-semibold hover:text-primary-dark">立即注册</button></p>
+      </div>
+      <div id="register-form" class="hidden">
+        <div class="mb-4">
+          <input type="text" id="reg-username" class="input-modern" placeholder="用户名（至少3位）" onkeydown="if(event.key==='Enter')handleRegister()" autocomplete="username">
+        </div>
+        <div class="mb-4">
+          <input type="password" id="reg-password" class="input-modern" placeholder="密码（至少6位）" onkeydown="if(event.key==='Enter')handleRegister()" autocomplete="new-password">
+        </div>
+        <div class="mb-6">
+          <input type="email" id="reg-email" class="input-modern" placeholder="邮箱（可选）" autocomplete="email">
+        </div>
+        <button onclick="handleRegister()" class="btn-modern w-full text-base py-3">创建账号</button>
+        <p class="text-center mt-5 text-sm text-gray-500 dark:text-gray-400">已有账号？<button onclick="toggleAuthMode()" class="text-primary font-semibold hover:text-primary-dark">直接登录</button></p>
+      </div>
+      <details class="mt-6 pt-5 border-t border-gray-100 dark:border-gray-700">
+        <summary class="text-xs text-gray-400 text-center cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 list-none select-none">
+          <span class="inline-flex items-center gap-1"><i class="fas fa-cog"></i> 高级设置 <i class="fas fa-chevron-down text-2xs"></i></span>
+        </summary>
+        <div class="mt-3">
+          <p class="text-xs text-gray-400 text-center mb-1">API 地址</p>
+          <input type="text" id="api-base-input" value="${getApiBase()}" class="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 text-gray-500 focus:border-primary outline-none" placeholder="https://your-api.workers.dev">
+        </div>
+      </details>
     </div>
   `;
   return div;
@@ -668,18 +835,24 @@ function showToast(message, type = 'success') {
   if (existing) return;
 
   const colors = { success: 'bg-secondary text-white', error: 'bg-danger text-white', warning: 'bg-accent text-white', info: 'bg-calm text-white' };
-  var toast = el('div', 'toast-notification fixed top-4 md:top-4 bottom-20 md:bottom-auto left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl shadow-lg z-[100] ' + colors[type] + ' fade-in flex items-center gap-2');
+  // 移动端：小屏、居中顶部；桌面端：正常尺寸
+  var toast = el('div', 'toast-notification fixed top-3 left-1/2 -translate-x-1/2 z-[100] ' + colors[type] + ' fade-in flex items-center gap-2 touch-btn');
+  toast.style.cssText = 'max-width:90vw;padding:8px 14px;border-radius:10px;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,0.12);';
+  if (window.innerWidth >= 768) {
+    toast.style.cssText = 'max-width:420px;padding:10px 20px;border-radius:12px;font-size:14px;box-shadow:0 4px 24px rgba(0,0,0,0.15);';
+  }
   toast.dataset.message = message;
   toast.dataset.type = type;
   toast.setAttribute('role', 'alert');
   toast.setAttribute('aria-live', 'polite');
   var icon = type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle';
-  toast.innerHTML = '<i class="fas fa-' + icon + '"></i><span class="font-medium">' + escapeHtml(message) + '</span>';
+  toast.innerHTML = '<i class="fas fa-' + icon + ' flex-shrink-0"></i><span class="font-medium whitespace-nowrap">' + escapeHtml(message) + '</span>';
   document.body.appendChild(toast);
   // 3秒后自动移除
   setTimeout(function() {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(-50%) translateY(-10px)';
+    toast.style.transition = 'opacity 0.3s, transform 0.3s';
     setTimeout(function() { toast.remove(); }, 300);
   }, 3000);
 }
@@ -687,7 +860,8 @@ function showToast(message, type = 'success') {
 // ========== 仪表盘 ==========
 async function renderDashboard() {
   const div = el('div', 'p-4 md:p-8 max-w-6xl mx-auto fade-in');
-
+  const d = getPomoDurations();
+  
   try {
     const data = await api.get('/api/dashboard');
     const stats = data.todayStats || {};
@@ -702,80 +876,107 @@ async function renderDashboard() {
     const startRate = totalTasks > 0 ? Math.round((totalStarted / totalTasks) * 100) : 0;
 
     div.innerHTML = `
-      <div class="mb-6">
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-white">欢迎回来</h2>
+      <div class="mb-8">
+        <h2 class="text-2xl md:text-3xl font-bold gradient-text mb-2">欢迎回来，${safeStorage.get('username') || '朋友'}</h2>
         <p class="text-gray-500 dark:text-gray-400">${new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-8">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-          <div class="flex items-center justify-between mb-2"><span class="text-xs md:text-sm text-gray-500 dark:text-gray-400">今日任务</span><i class="fas fa-tasks text-primary/60"></i></div>
-          <p class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">${stats.tasks_created || 0}</p>
-          <p class="text-xs text-gray-400 mt-1">${stats.tasks_completed || 0} 已完成</p>
+      <div class="grid-responsive mb-8">
+        <div class="stat-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">今日任务</span>
+            <span class="stat-icon" style="background: var(--color-primary-light); color: var(--color-primary);"><i class="fas fa-tasks"></i></span>
+          </div>
+          <div class="stat-value">${stats.tasks_created || 0}</div>
+          <p class="stat-label">${stats.tasks_completed || 0} 已完成</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-          <div class="flex items-center justify-between mb-2"><span class="text-xs md:text-sm text-gray-500 dark:text-gray-400">微启动</span><i class="fas fa-play-circle text-secondary/60"></i></div>
-          <p class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">${stats.micro_starts_count || 0}</p>
-          <p class="text-xs text-gray-400 mt-1">2分钟契约</p>
+        <div class="stat-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">微启动</span>
+            <span class="stat-icon" style="background: var(--color-secondary-light); color: var(--color-secondary);"><i class="fas fa-play-circle"></i></span>
+          </div>
+          <div class="stat-value">${stats.micro_starts_count || 0}</div>
+          <p class="stat-label">2分钟契约</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-          <div class="flex items-center justify-between mb-2"><span class="text-xs md:text-sm text-gray-500 dark:text-gray-400">番茄钟</span><i class="fas fa-stopwatch text-danger/60"></i></div>
-          <p class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">${todayPomo.count || 0}</p>
-          <p class="text-xs text-gray-400 mt-1">${todayPomo.completed || 0} 完成</p>
+        <div class="stat-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">番茄钟</span>
+            <span class="stat-icon" style="background: rgba(239,68,68,0.1); color: #EF4444;"><i class="fas fa-stopwatch"></i></span>
+          </div>
+          <div class="stat-value">${todayPomo.count || 0}</div>
+          <p class="stat-label">${todayPomo.completed || 0} 完成</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-          <div class="flex items-center justify-between mb-2"><span class="text-xs md:text-sm text-gray-500 dark:text-gray-400">拖延记录</span><i class="fas fa-exclamation-triangle text-accent/60"></i></div>
-          <p class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">${stats.procrastination_count || 0}</p>
-          <p class="text-xs text-gray-400 mt-1">今日觉察</p>
+        <div class="stat-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">拖延记录</span>
+            <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-amber-500">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+          </div>
+          <p class="text-3xl font-bold text-gray-800 dark:text-white">${stats.procrastination_count || 0}</p>
+          <p class="text-sm text-gray-400 mt-1">今日觉察</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700 col-span-2 md:col-span-1">
-          <div class="flex items-center justify-between mb-2"><span class="text-xs md:text-sm text-gray-500 dark:text-gray-400">本周启动率</span><i class="fas fa-chart-line text-calm/60"></i></div>
-          <p class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">${startRate}%</p>
-          <p class="text-xs text-gray-400 mt-1">任务启动比例</p>
+        <div class="stat-card">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">本周启动率</span>
+            <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500">
+              <i class="fas fa-chart-line"></i>
+            </div>
+          </div>
+          <p class="text-3xl font-bold text-gray-800 dark:text-white">${startRate}%</p>
+          <p class="text-sm text-gray-400 mt-1">任务启动比例</p>
         </div>
       </div>
 
-      <div class="grid md:grid-cols-3 gap-6">
-        <div class="md:col-span-2 space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="font-bold text-gray-800 dark:text-white flex items-center gap-2"><i class="fas fa-mountain text-warm"></i> 今日时间地形</h3>
-              <button onclick="navigate('time-blocks')" class="text-sm text-primary hover:underline">管理</button>
+      <div class="grid lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-6">
+          <div class="card-modern p-6">
+            <div class="flex items-center justify-between mb-5">
+              <h3 class="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-mountain text-orange-500"></i> 今日时间地形
+              </h3>
+              <button onclick="navigate('time-blocks')" class="text-sm text-indigo-600 font-medium hover:text-indigo-700">管理</button>
             </div>
             <div class="relative h-40 md:h-48 bg-gray-50 dark:bg-gray-700/50 rounded-xl overflow-hidden">${renderTimeTerrain(blocks)}</div>
-            <div class="flex gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-300 dark:bg-gray-600"></span>已逝</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-primary/30"></span>计划</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-secondary/30"></span>完成</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-accent/30"></span>进行中</span>
+            <div class="flex gap-4 mt-4 text-sm text-gray-500 dark:text-gray-400 flex-wrap">
+              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-gray-300 dark:bg-gray-600"></span>已逝</span>
+              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-indigo-400/30"></span>计划</span>
+              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-green-400/30"></span>完成</span>
+              <span class="flex items-center gap-2"><span class="w-4 h-4 rounded bg-amber-400/30"></span>进行中</span>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="font-bold text-gray-800 dark:text-white flex items-center gap-2"><i class="fas fa-clipboard-list text-primary"></i> 待启动任务</h3>
-              <button onclick="navigate('tasks')" class="text-sm text-primary hover:underline">查看全部</button>
+          <div class="card-modern p-6">
+            <div class="flex items-center justify-between mb-5">
+              <h3 class="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fas fa-clipboard-list text-indigo-500"></i> 待启动任务
+              </h3>
+              <button onclick="navigate('tasks')" class="text-sm text-indigo-600 font-medium hover:text-indigo-700">查看全部</button>
             </div>
             ${tasks.length === 0 ? `
-              <div class="text-center py-8 text-gray-400 dark:text-gray-500">
-                <i class="fas fa-seedling text-4xl mb-3 text-gray-300 dark:text-gray-600"></i>
-                <p>还没有任务，去创建第一个吧</p>
-                <button onclick="navigate('tasks')" class="mt-3 px-4 py-2 bg-primary text-white rounded-lg text-sm touch-btn">创建任务</button>
+              <div class="text-center py-10 text-gray-400 dark:text-gray-500">
+                <i class="fas fa-seedling text-5xl mb-4 text-gray-300 dark:text-gray-600"></i>
+                <p class="text-lg">还没有任务，去创建第一个吧</p>
+                <button onclick="navigate('tasks')" class="btn-modern mt-5">创建任务</button>
               </div>
             ` : `<div class="space-y-3">${tasks.map(task => `
-              <div class="flex items-center gap-4 p-4 rounded-xl border border-gray-100 dark:border-gray-700 hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/10 transition-all cursor-pointer touch-btn" onclick="navigate('task-detail', {id: ${task.id}})">
-                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400"><i class="fas fa-${getCategoryIcon(task.category)}"></i></div>
-                <div class="flex-1 min-w-0">
-                  <h4 class="font-medium text-gray-800 dark:text-gray-200 truncate">${task.title}</h4>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">${task.steps_count} 个原子步骤 · 难度 ${'★'.repeat(task.difficulty)}</p>
+              <div class="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-all cursor-pointer" onclick="navigate('task-detail', {id: ${task.id}})">
+                <div class="w-12 h-12 rounded-xl bg-gradient-soft flex items-center justify-center text-indigo-500">
+                  <i class="fas fa-${getCategoryIcon(task.category)}"></i>
                 </div>
-                <span class="px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
+                <div class="flex-1 min-w-0">
+                  <h4 class="font-semibold text-gray-800 dark:text-gray-200 truncate">${task.title}</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">${task.steps_count || 0} 个原子步骤 · 难度 ${'★'.repeat(task.difficulty || 2)}</p>
+                </div>
+                <span class="px-3 py-1.5 rounded-full text-xs font-semibold ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
               </div>
             `).join('')}</div>`}
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-chart-bar text-calm"></i> 近7天行动趋势</h3>
+          <div class="card-modern p-6">
+            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-5 flex items-center gap-2">
+              <i class="fas fa-chart-bar text-blue-500"></i> 近7天行动趋势
+            </h3>
             <div class="h-40 flex items-end gap-1 md:gap-2">
               ${weekly.map((d, i) => {
                 const max = Math.max(...weekly.map(x => Math.max(x.tasks_completed||0, x.micro_starts_count||0, x.procrastination_count||0, x.pomodoro_count||0))) || 1;
@@ -804,60 +1005,91 @@ async function renderDashboard() {
         </div>
 
         <div class="space-y-6">
-          <div class="bg-gradient-to-br from-primary/10 to-secondary/10 dark:from-primary/20 dark:to-secondary/20 rounded-2xl p-6 border border-primary/10 dark:border-primary/20">
-            <h3 class="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2"><i class="fas fa-heart text-danger"></i> 情绪状态</h3>
+          <div class="card-modern p-6 bg-gradient-soft">
+            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+              <i class="fas fa-heart text-rose-500"></i> 情绪状态
+            </h3>
             ${emotion ? `
-              <div class="space-y-2">
-                <div class="flex items-center gap-2">
-                  <span class="text-2xl">${getEmotionEmoji(emotion.emotion_type)}</span>
-                  <div><p class="font-medium text-gray-800 dark:text-white">${getEmotionLabel(emotion.emotion_type)}</p><p class="text-xs text-gray-500 dark:text-gray-400">${new Date(emotion.created_at).toLocaleString('zh-CN')}</p></div>
-                </div>
-                <div class="flex items-center gap-2 mt-2">
-                  <span class="text-xs text-gray-500 dark:text-gray-400">能量</span>
-                  <div class="flex-1 h-2 bg-white/50 dark:bg-white/10 rounded-full overflow-hidden">
-                    <div class="h-full bg-gradient-to-r from-danger to-secondary rounded-full" style="width:${(emotion.energy_level/5)*100}%"></div>
+              <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                  <span class="text-3xl">${getEmotionEmoji(emotion.emotion_type)}</span>
+                  <div>
+                    <p class="font-semibold text-gray-800 dark:text-white">${getEmotionLabel(emotion.emotion_type)}</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">${new Date(emotion.created_at).toLocaleString('zh-CN')}</p>
                   </div>
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">${emotion.energy_level}/5</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-sm text-gray-500 dark:text-gray-400 font-medium">能量</span>
+                  <div class="flex-1 h-3 bg-white/60 dark:bg-gray-700/60 rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-rose-400 to-green-400 rounded-full" style="width:${(emotion.energy_level/5)*100}%"></div>
+                  </div>
+                  <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${emotion.energy_level}/5</span>
                 </div>
               </div>
-            ` : `<p class="text-sm text-gray-500 dark:text-gray-400 mb-3">还没有记录情绪，开始第一次扫描吧</p>`}
-            <button onclick="navigate('emotion')" class="w-full mt-4 bg-white/80 dark:bg-white/10 backdrop-blur text-primary py-2 rounded-xl text-sm font-medium hover:bg-white dark:hover:bg-white/20 transition-all touch-btn">${emotion ? '重新扫描' : '情绪扫描'}</button>
+            ` : `<p class="text-gray-500 dark:text-gray-400 mb-4">还没有记录情绪，开始第一次扫描吧</p>`}
+            <button onclick="navigate('emotion')" class="btn-modern w-full">${emotion ? '重新扫描' : '情绪扫描'}</button>
           </div>
 
           ${data.upcomingTasks && data.upcomingTasks.length > 0 ? `
-          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-exclamation-circle text-accent"></i> 即将到期</h3>
+          <div class="card-modern p-6">
+            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+              <i class="fas fa-exclamation-circle text-amber-500"></i> 即将到期
+            </h3>
             <div class="space-y-3">
               ${data.upcomingTasks.map(task => `
-                <div class="flex items-center gap-3 p-3 rounded-xl ${new Date(task.due_date + 'T23:59:59') < new Date() ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50 dark:bg-gray-700/50'}">
+                <div class="flex items-center gap-3 p-4 rounded-xl ${new Date(task.due_date + 'T23:59:59') < new Date() ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-700/30'}">
                   <div class="flex-1 min-w-0">
-                    <p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${task.title}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date + 'T23:59:59') < new Date() ? ' ⚠️ 已过期' : ' ⏰ 即将到期'}</p>
+                    <p class="font-semibold text-gray-800 dark:text-gray-200 truncate">${task.title}</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      <i class="fas fa-calendar mr-1"></i>${task.due_date}
+                      ${new Date(task.due_date + 'T23:59:59') < new Date() ? ' ⚠️ 已过期' : ' ⏰ 即将到期'}
+                    </p>
                   </div>
-                  <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-3 py-1.5 rounded-lg text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">查看</button>
+                  <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-4 py-2 rounded-xl text-sm bg-indigo-100 text-indigo-600 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium">查看</button>
                 </div>
               `).join('')}
             </div>
           </div>
           ` : ''}
-          <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-            <h3 class="font-bold text-gray-800 dark:text-white mb-4">快速行动</h3>
+          
+          <div class="card-modern p-6">
+            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-5">快速行动</h3>
             <div class="space-y-3">
-              <button onclick="navigate('micro-start')" class="w-full flex items-center gap-3 p-4 rounded-xl bg-primary/5 dark:bg-primary/10 text-primary hover:bg-primary/10 dark:hover:bg-primary/20 transition-all text-left touch-btn">
-                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><i class="fas fa-play"></i></div>
-                <div><p class="font-medium">2分钟契约</p><p class="text-xs text-gray-500 dark:text-gray-400">只做2分钟，然后自由选择</p></div>
+              <button onclick="navigate('micro-start')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all text-left">
+                <div class="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-800/50 flex items-center justify-center">
+                  <i class="fas fa-play text-xl"></i>
+                </div>
+                <div>
+                  <p class="font-semibold">2分钟契约</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">只做2分钟，然后自由选择</p>
+                </div>
               </button>
-              <button onclick="navigate('pomodoro')" class="w-full flex items-center gap-3 p-4 rounded-xl bg-danger/5 dark:bg-danger/10 text-danger hover:bg-danger/10 dark:hover:bg-danger/20 transition-all text-left touch-btn">
-                <div class="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center"><i class="fas fa-stopwatch"></i></div>
-                <div><p class="font-medium">番茄钟</p><p class="text-xs text-gray-500 dark:text-gray-400">25分钟专注 + 5分钟休息</p></div>
+              <button onclick="navigate('pomodoro')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all text-left">
+                <div class="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-800/50 flex items-center justify-center">
+                  <i class="fas fa-stopwatch text-xl"></i>
+                </div>
+                <div>
+                  <p class="font-semibold">番茄钟</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">${d.work/60}分钟专注 + ${d.shortBreak/60}分钟休息</p>
+                </div>
               </button>
-              <button onclick="navigate('tasks')" class="w-full flex items-center gap-3 p-4 rounded-xl bg-secondary/5 dark:bg-secondary/10 text-secondary hover:bg-secondary/10 dark:hover:bg-secondary/20 transition-all text-left touch-btn">
-                <div class="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center"><i class="fas fa-cut"></i></div>
-                <div><p class="font-medium">拆解任务</p><p class="text-xs text-gray-500 dark:text-gray-400">把模糊任务切成原子步骤</p></div>
+              <button onclick="navigate('tasks')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 transition-all text-left">
+                <div class="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-800/50 flex items-center justify-center">
+                  <i class="fas fa-cut text-xl"></i>
+                </div>
+                <div>
+                  <p class="font-semibold">拆解任务</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">把模糊任务切成原子步骤</p>
+                </div>
               </button>
-              <button onclick="navigate('lab')" class="w-full flex items-center gap-3 p-4 rounded-xl bg-accent/5 dark:bg-accent/10 text-accent hover:bg-accent/10 dark:hover:bg-accent/20 transition-all text-left touch-btn">
-                <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center"><i class="fas fa-microscope"></i></div>
-                <div><p class="font-medium">拖延模式</p><p class="text-xs text-gray-500 dark:text-gray-400">看看你的拖延规律</p></div>
+              <button onclick="navigate('lab')" class="w-full flex items-center gap-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all text-left">
+                <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-800/50 flex items-center justify-center">
+                  <i class="fas fa-microscope text-xl"></i>
+                </div>
+                <div>
+                  <p class="font-semibold">拖延模式</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">看看你的拖延规律</p>
+                </div>
               </button>
             </div>
           </div>
@@ -882,7 +1114,7 @@ function renderTimeTerrain(blocks) {
   }
   const hours = Array.from({length: 24}, (_, i) => i);
   const now = new Date(); const currentHour = now.getHours();
-  let html = '<div class="flex overflow-x-auto sm:overflow-visible gap-0 rounded-xl h-20 sm:h-16 border border-gray-200 dark:border-gray-700 relative scrollbar-hide">';
+  let html = `<div class="flex overflow-x-auto sm:overflow-visible gap-0 rounded-xl h-20 sm:h-16 border border-gray-200 dark:border-gray-700 relative scrollbar-hide"><div class="absolute top-1 left-1 z-10 bg-white/80 dark:bg-gray-800/80 backdrop-blur px-1.5 py-0.5 rounded text-[10px] font-medium dark:text-white shadow-sm">现在 ${currentHour}:${String(now.getMinutes()).padStart(2,'0')}</div>`;
   hours.forEach(hour => {
     const block = blocks.find(b => {
       const start = parseInt(b.start_time?.split(':')[0] || 0);
@@ -899,7 +1131,7 @@ function renderTimeTerrain(blocks) {
     if (hour === currentHour) color = 'bg-warm/40';
     html += `<div class="flex-shrink-0 w-10 sm:flex-1 ${color} border-r border-white/30 dark:border-gray-800/30 relative flex flex-col items-center justify-end pb-1"><div class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">${hour}</div></div>`;
   });
-  html += `</div><div class="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"><span>已逝</span><span>计划</span><span>完成</span><span>进行中</span></div><div class="absolute top-2 left-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur px-2 py-1 rounded text-xs font-medium dark:text-white">当前 ${currentHour}:${String(now.getMinutes()).padStart(2,'0')}</div>`;
+  html += `</div>`;
   return html;
 }
 
@@ -936,7 +1168,7 @@ function renderEmotion() {
         <button onclick="saveEmotion()" class="w-full bg-primary text-white py-3 rounded-xl font-medium hover:bg-primary/90 transition-all touch-btn">记录并继续</button>
       </div>
     </div>
-    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="card-modern p-6">
       <h3 class="font-bold text-gray-800 dark:text-white mb-4">近期情绪记录</h3>
       <div id="emotion-history" class="space-y-3"><p class="text-gray-400 text-center py-4">加载中...</p></div>
     </div>
@@ -1044,7 +1276,7 @@ async function loadTasks() {
                 <h4 class="font-medium text-gray-800 dark:text-gray-200">${task.title}</h4>
                 ${task.priority ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${getPriorityStyle(task.priority)}">${getPriorityLabel(task.priority)}</span>` : ''}
               </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">${task.category} · 难度 ${'★'.repeat(task.difficulty)}${'☆'.repeat(5-task.difficulty)}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">${task.category || 'general'} · 难度 ${'★'.repeat(task.difficulty || 2)}${'☆'.repeat(5-(task.difficulty || 2))}</p>
             </div>
           </div>
           <span class="px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
@@ -1052,7 +1284,7 @@ async function loadTasks() {
         ${task.description ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-3">${task.description}</p>` : ''}
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <span><i class="fas fa-shoe-prints mr-1"></i>${task.steps_count} 个步骤</span>
+            <span><i class="fas fa-shoe-prints mr-1"></i>${task.steps_count || 0} 个步骤</span>
             ${task.due_date ? `<span class="${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-500 dark:text-red-400 font-medium' : ''}"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date) < new Date() && task.status !== 'completed' ? ' ⚠️' : ''}</span>` : ''}
           </div>
           <div class="flex gap-2">
@@ -1226,7 +1458,7 @@ async function renderTaskDetail() {
           <button onclick="deleteTask(${taskId}); navigate('tasks')" aria-label="删除任务" class="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-danger hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-trash"></i></button>
         </div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
+      <div class="card-modern p-6 mb-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-gray-800 dark:text-white flex items-center gap-2"><i class="fas fa-shoe-prints text-primary"></i>原子步骤</h3>
           <button onclick="showStepModal(${taskId})" class="text-sm text-primary hover:underline"><i class="fas fa-plus mr-1"></i>添加</button>
@@ -1272,7 +1504,7 @@ async function renderTaskDetail() {
         <p class="text-sm text-gray-600 dark:text-gray-400">如果任务让你感到抗拒，试着把它拆成更小的步骤。每个步骤应该能在2分钟内开始。</p>
       </div>
     `;
-  } catch (err) { div.innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="renderMicroStart()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>'; }
+  } catch (err) { div.innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="renderTaskDetail()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>'; }
   return div;
 }
 
@@ -1358,6 +1590,14 @@ function showPriorityModal(taskId, currentPriority) {
 }
 
 // ========== 微启动 ==========
+
+// 从周视图同步任务的描述中提取短标签（如 "周一 06:30-07:30"）
+function getTaskShortLabel(desc) {
+  if (!desc || desc.indexOf('[周视图导入]') !== 0) return '';
+  var parts = desc.replace('[周视图导入] ', '').split(' | ');
+  return parts[0] || '';
+}
+
 function renderMicroStart() {
   const div = el('div', 'p-4 md:p-8 max-w-2xl mx-auto fade-in');
   div.innerHTML = `
@@ -1392,7 +1632,7 @@ function renderMicroStart() {
         <p class="text-sm text-gray-600 dark:text-gray-400 text-center"><i class="fas fa-handshake text-primary mr-1"></i>你与自己的契约：只做2分钟，2分钟后你可以自由选择停止或继续。</p>
       </div>
     </div>
-    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="card-modern p-6">
       <h3 class="font-bold text-gray-800 dark:text-white mb-4">近期微启动记录</h3>
       <div id="micro-history" class="space-y-3"><p class="text-gray-400 dark:text-gray-500 text-center py-4">加载中...</p></div>
     </div>
@@ -1403,11 +1643,18 @@ function renderMicroStart() {
 
 async function loadMicroTaskOptions() {
   try {
-    const data = await api.get('/api/tasks?status=pending');
+    const data = await api.get('/api/tasks');
     const select = $('#micro-task-select');
     if (!select) return;
-    data.tasks.forEach(task => {
-      const opt = document.createElement('option'); opt.value = task.id; opt.textContent = task.title;
+    select.innerHTML = '<option value="">-- 选择任务 --</option>';
+    data.tasks.filter(t => t.status !== 'completed').forEach(task => {
+      const opt = document.createElement('option'); opt.value = task.id;
+      var label = task.title;
+      if (task.due_date) label += ' (' + task.due_date;
+      var tl = getTaskShortLabel(task.description);
+      if (tl) label += ' ' + tl;
+      if (task.due_date) label += ')';
+      opt.textContent = label;
       if (state.activeTask == task.id) opt.selected = true;
       select.appendChild(opt);
     });
@@ -1506,7 +1753,7 @@ async function loadMicroHistory() {
     container.innerHTML = data.microStarts.slice(0, 10).map(ms => `
       <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50">
         <div class="w-10 h-10 rounded-full ${ms.continued_after_contract ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'} flex items-center justify-center"><i class="fas fa-${ms.continued_after_contract ? 'check-double' : 'check'}"></i></div>
-        <div class="flex-1 min-w-0"><p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${ms.task_title || '自由启动'}</p><p class="text-xs text-gray-500 dark:text-gray-400">${ms.actual_duration}分钟 · ${new Date(ms.created_at).toLocaleString('zh-CN')}</p></div>
+        <div class="flex-1 min-w-0"><p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${ms.task_title || '自由启动'}${ms.task_due_date ? `<span class="text-gray-400 dark:text-gray-500 font-normal"> (${ms.task_due_date})</span>` : ''}</p>${(function(){var tl=ms.task_desc?getTaskShortLabel(ms.task_desc):'';return tl?'<p class="text-xs text-gray-400 dark:text-gray-500 truncate">'+tl+'</p>':''})()}${ms.step_title ? `<p class="text-xs text-primary truncate mt-0.5"><i class="fas fa-list-ol mr-1"></i>${ms.step_title}</p>` : ''}<p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${ms.actual_duration}分钟 · ${new Date(ms.created_at).toLocaleString('zh-CN')}</p></div>
         ${ms.continued_after_contract ? '<span class="text-xs text-secondary font-medium">继续了</span>' : ''}
       </div>
     `).join('');
@@ -1515,11 +1762,12 @@ async function loadMicroHistory() {
 
 // ========== 番茄钟 ==========
 function renderPomodoro() {
+  const d = getPomoDurations();
   const div = el('div', 'p-4 md:p-8 max-w-2xl mx-auto fade-in');
   div.innerHTML = `
     <div class="mb-6">
       <h2 class="text-2xl font-bold text-gray-800 dark:text-white">番茄钟</h2>
-      <p class="text-gray-500 dark:text-gray-400">25分钟专注 + 5分钟休息</p>
+      <p class="text-gray-500 dark:text-gray-400">${d.work/60}分钟专注 + ${d.shortBreak/60}分钟休息</p>
     </div>
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
       <div class="mb-6">
@@ -1527,14 +1775,14 @@ function renderPomodoro() {
         <select id="pomo-task-select" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none"><option value="">-- 自由番茄 --</option></select>
       </div>
       <div class="text-center py-8">
-        <div class="relative w-48 h-48 sm:w-56 sm:h-56 mx-auto mb-6">
+        <div id="pomo-timer-container" class="relative w-48 h-48 sm:w-56 sm:h-56 mx-auto mb-6">
           <svg class="w-full h-full transform -rotate-90" viewBox="0 0 224 224">
             <circle cx="112" cy="112" r="100" stroke="currentColor" stroke-width="10" fill="none" class="text-gray-100 dark:text-gray-700"/>
             <circle id="pomo-progress" cx="112" cy="112" r="100" stroke="url(#pomoGradient)" stroke-width="10" fill="none" stroke-dasharray="628" stroke-dashoffset="0" stroke-linecap="round" class="timer-circle"/>
             <defs><linearGradient id="pomoGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#EF4444"/><stop offset="100%" style="stop-color:#F97316"/></linearGradient></defs>
           </svg>
           <div class="absolute inset-0 flex flex-col items-center justify-center">
-            <span id="pomo-display" class="text-4xl sm:text-5xl font-bold text-gray-800 dark:text-white">25:00</span>
+            <span id="pomo-display" class="text-4xl sm:text-5xl font-bold text-gray-800 dark:text-white">${getPomoDurations().work / 60}:00</span>
             <span id="pomo-mode" class="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium">专注时间</span>
             <span id="pomo-round" class="text-xs text-gray-400 dark:text-gray-500 mt-1">第 1 轮</span>
           </div>
@@ -1561,7 +1809,7 @@ function renderPomodoro() {
         </div>
       </div>
     </div>
-    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="card-modern p-6">
       <h3 class="font-bold text-gray-800 dark:text-white mb-4">近期番茄记录</h3>
       <div id="pomo-history" class="space-y-3"><p class="text-gray-400 dark:text-gray-500 text-center py-4">加载中...</p></div>
     </div>
@@ -1572,15 +1820,23 @@ function renderPomodoro() {
 
 async function loadPomoTaskOptions() {
   try {
-    const data = await api.get('/api/tasks?status=pending');
+    const data = await api.get('/api/tasks');
     const select = $('#pomo-task-select');
     if (!select) return;
-    data.tasks.forEach(task => { const opt = document.createElement('option'); opt.value = task.id; opt.textContent = task.title; select.appendChild(opt); });
+    select.innerHTML = '<option value="">-- 自由番茄 --</option>';
+    data.tasks.filter(t => t.status !== 'completed').forEach(task => { const opt = document.createElement('option'); opt.value = task.id; var lbl = task.title; if (task.due_date) lbl += ' (' + task.due_date; var tl = getTaskShortLabel(task.description); if (tl) lbl += ' ' + tl; if (task.due_date) lbl += ')'; opt.textContent = lbl; select.appendChild(opt); });
   } catch (err) { console.error(err); }
 }
 
 // pomoInterval/pomoSeconds/pomoTotal/pomoRunning/pomoMode/pomoRound/pomoFocusCount 已在全局声明
-const POMO_WORK = 1500, POMO_SHORT_BREAK = 300, POMO_LONG_BREAK = 900;
+function getPomoDurations() {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  return {
+    work: (prefs.pomodoroWork || 25) * 60,
+    shortBreak: (prefs.pomodoroBreak || 5) * 60,
+    longBreak: 15 * 60
+  };
+}
 
 function startPomodoro() {
   pomoRunning = true;
@@ -1589,7 +1845,7 @@ function startPomodoro() {
   $('#pomo-btn-skip').classList.remove('hidden');
   $('#pomo-mode').textContent = pomoMode === 'work' ? '专注时间' : pomoMode === 'short_break' ? '短休息' : '长休息';
   $('#pomo-mode').className = `text-sm font-medium mt-2 ${pomoMode === 'work' ? 'text-danger' : 'text-secondary'}`;
-  document.querySelector('.relative.w-56')?.classList.add(pomoMode === 'work' ? 'pomodoro-active' : 'pomodoro-break');
+  document.querySelector('#pomo-timer-container')?.classList.add(pomoMode === 'work' ? 'pomodoro-active' : 'pomodoro-break');
 
   // 修复 FE-009: 使用 Date.now() 差值计算，避免 setInterval 漂移
   // 使用全局 pomoStartTime 以便 completePomodoroRound 可以访问
@@ -1612,7 +1868,7 @@ function pausePomodoro() {
   clearInterval(pomoInterval); pomoRunning = false;
   $('#pomo-btn-start').classList.remove('hidden'); $('#pomo-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>继续';
   $('#pomo-btn-pause').classList.add('hidden');
-  document.querySelector('.relative.w-56')?.classList.remove('pomodoro-active', 'pomodoro-break');
+  document.querySelector('#pomo-timer-container')?.classList.remove('pomodoro-active', 'pomodoro-break');
 }
 
 function skipPomodoro() {
@@ -1622,12 +1878,13 @@ function skipPomodoro() {
 
 function resetPomodoro() {
   clearInterval(pomoInterval); pomoRunning = false;
-  pomoMode = 'work'; pomoSeconds = POMO_WORK; pomoTotal = POMO_WORK; pomoRound = 1;
+  const d = getPomoDurations();
+  pomoMode = 'work'; pomoSeconds = d.work; pomoTotal = d.work; pomoRound = 1;
   updatePomoDisplay();
   $('#pomo-btn-start').classList.remove('hidden'); $('#pomo-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>开始专注';
   $('#pomo-btn-pause').classList.add('hidden'); $('#pomo-btn-skip').classList.add('hidden');
   $('#pomo-mode').textContent = '专注时间'; $('#pomo-mode').className = 'text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium';
-  document.querySelector('.relative.w-56')?.classList.remove('pomodoro-active', 'pomodoro-break');
+  document.querySelector('.relative.w-48')?.classList.remove('pomodoro-active', 'pomodoro-break');
 }
 
 function updatePomoDisplay() {
@@ -1657,12 +1914,13 @@ async function completePomodoroRound(skipped = false) {
   }
 
   // 切换模式
+  const d = getPomoDurations();
   if (pomoMode === 'work') {
     pomoMode = pomoRound % 4 === 0 ? 'long_break' : 'short_break';
-    pomoSeconds = pomoMode === 'long_break' ? POMO_LONG_BREAK : POMO_SHORT_BREAK;
-    showToast(pomoMode === 'long_break' ? '长休息时间（15分钟）' : '短休息时间（5分钟）');
+    pomoSeconds = pomoMode === 'long_break' ? d.longBreak : d.shortBreak;
+    showToast(pomoMode === 'long_break' ? '长休息时间（15分钟）' : '短休息时间（' + (d.shortBreak/60) + '分钟）');
   } else {
-    pomoMode = 'work'; pomoSeconds = POMO_WORK; pomoRound++;
+    pomoMode = 'work'; pomoSeconds = d.work; pomoRound++;
     showToast('休息结束，开始下一轮专注！');
   }
   pomoTotal = pomoSeconds;
@@ -1671,7 +1929,7 @@ async function completePomodoroRound(skipped = false) {
   $('#pomo-btn-start').classList.remove('hidden'); $('#pomo-btn-start').innerHTML = `<i class="fas fa-play mr-2"></i>开始${pomoMode === 'work' ? '专注' : '休息'}`;
   $('#pomo-btn-pause').classList.add('hidden'); $('#pomo-btn-skip').classList.add('hidden');
   $('#pomo-mode').textContent = pomoMode === 'work' ? '专注时间' : pomoMode === 'short_break' ? '短休息' : '长休息';
-  document.querySelector('.relative.w-56')?.classList.remove('pomodoro-active', 'pomodoro-break');
+  document.querySelector('.relative.w-48')?.classList.remove('pomodoro-active', 'pomodoro-break');
 }
 
 async function updatePomoStats() {
@@ -1694,7 +1952,7 @@ async function loadPomodoroHistory() {
     container.innerHTML = data.sessions.slice(0, 10).map(s => `
       <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50">
         <div class="w-10 h-10 rounded-full ${s.completed ? 'bg-danger/10 text-danger' : 'bg-gray-200 dark:bg-gray-600 text-gray-500'} flex items-center justify-center"><i class="fas fa-${s.completed ? 'check' : 'times'}"></i></div>
-        <div class="flex-1 min-w-0"><p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${s.task_title || '自由番茄'}</p><p class="text-xs text-gray-500 dark:text-gray-400">${s.duration}分钟 · ${new Date(s.created_at).toLocaleString('zh-CN')}</p></div>
+        <div class="flex-1 min-w-0"><p class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">${s.task_title || '自由番茄'}${s.task_due_date ? `<span class="text-gray-400 dark:text-gray-500 font-normal"> (${s.task_due_date})</span>` : ''}</p>${(function(){var tl=s.task_desc?getTaskShortLabel(s.task_desc):'';return tl?'<p class="text-xs text-gray-400 dark:text-gray-500 truncate">'+tl+'</p>':''})()}<p class="text-xs text-gray-500 dark:text-gray-400">${s.duration}分钟 · ${new Date(s.created_at).toLocaleString('zh-CN')}</p></div>
         ${s.completed ? '<span class="text-xs text-danger font-medium">已完成</span>' : '<span class="text-xs text-gray-400">未完成</span>'}
       </div>
     `).join('');
@@ -1724,27 +1982,27 @@ async function loadLabData() {
 
     $('#lab-content').innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="card-modern p-5">
           <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-1">任务完成率</p>
           <p class="text-xl md:text-2xl font-bold ${completionRate >= 50 ? 'text-secondary' : 'text-accent'}">${completionRate}%</p>
           <p class="text-xs text-gray-400">${taskRate?.completed || 0}/${taskRate?.total || 0}</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="card-modern p-5">
           <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-1">微启动次数</p>
           <p class="text-xl md:text-2xl font-bold text-primary">${microStats?.total || 0}</p>
           <p class="text-xs text-gray-400">累计契约</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="card-modern p-5">
           <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-1">契约后继续率</p>
           <p class="text-xl md:text-2xl font-bold ${continueRate >= 30 ? 'text-secondary' : 'text-calm'}">${continueRate}%</p>
           <p class="text-xs text-gray-400">突破2分钟</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="card-modern p-5">
           <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-1">番茄钟</p>
           <p class="text-xl md:text-2xl font-bold text-danger">${pomoStats?.total || 0}</p>
           <p class="text-xs text-gray-400">${pomoStats?.total_minutes || 0}分钟</p>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-5 shadow-sm border border-gray-100 dark:border-gray-700 col-span-2 md:col-span-1">
+        <div class="card-modern p-5 col-span-2 md:col-span-1">
           <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-1">拖延觉察</p>
           <p class="text-xl md:text-2xl font-bold text-accent">${p.dailyTrend?.reduce((a,b) => a + (b.procrastination_count || 0), 0) || 0}</p>
           <p class="text-xs text-gray-400">自我观察</p>
@@ -1752,7 +2010,7 @@ async function loadLabData() {
       </div>
 
       <div class="grid md:grid-cols-2 gap-6 mb-6">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="card-modern p-6">
           <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-search text-primary"></i>最常见的拖延原因</h3>
           ${p.reasonDistribution?.length > 0 ? `<div class="space-y-3">${p.reasonDistribution.map((r, i) => `
             <div class="flex items-center gap-3">
@@ -1763,7 +2021,7 @@ async function loadLabData() {
             </div>
           `).join('')}</div>` : '<p class="text-gray-400 dark:text-gray-500 text-center py-4">暂无数据</p>'}
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="card-modern p-6">
           <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-calendar-week text-warm"></i>按星期分布</h3>
           ${p.weekdayDistribution?.length > 0 ? `<div class="flex items-end gap-2 h-40">${p.weekdayDistribution.map(d => `
             <div class="flex-1 flex flex-col items-center gap-1">
@@ -1774,7 +2032,7 @@ async function loadLabData() {
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
+      <div class="card-modern p-6 mb-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-mobile-alt text-danger"></i>最常见的干扰源</h3>
         ${p.distractionDistribution?.length > 0 ? `<div class="flex flex-wrap gap-2">${p.distractionDistribution.map(d => `<span class="px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm">${d.distraction_source} <span class="text-primary font-medium">${d.count}</span></span>`).join('')}</div>` : '<p class="text-gray-400 dark:text-gray-500 text-center py-4">暂无数据</p>'}
       </div>
@@ -1941,7 +2199,7 @@ async function renderCommitmentDetail() {
         <button onclick="navigate('commitments')" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2 flex items-center gap-1"><i class="fas fa-arrow-left"></i>返回</button>
         <h2 class="text-2xl font-bold text-gray-800 dark:text-white">承诺详情</h2>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
+      <div class="card-modern p-6 mb-6">
         <div class="flex items-start justify-between mb-4">
           <div class="flex-1">
             <p class="font-bold text-lg text-gray-800 dark:text-white ${c.completed ? 'line-through opacity-60' : ''}">${c.description}</p>
@@ -1966,7 +2224,7 @@ async function renderCommitmentDetail() {
       </div>
     `;
   } catch (err) {
-    div.innerHTML = '<div class="p-8 text-center text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTimeBlocks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+    div.innerHTML = '<div class="p-8 text-center text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="renderCommitmentDetail()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
   return div;
 }
@@ -1998,7 +2256,7 @@ function renderTimeBlocks() {
       <button onclick="showTimeBlockModal()" class="bg-primary text-white px-4 py-2 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 touch-btn"><i class="fas fa-plus mr-1"></i>添加</button>
     </div>
     <div class="mb-6"><input type="date" id="timeblock-date" value="${today}" class="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none" onchange="loadTimeBlocks()"></div>
-    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="card-modern p-6">
       <div id="timeblocks-timeline" class="space-y-3"><p class="text-gray-400 dark:text-gray-500 text-center py-8">加载中...</p></div>
     </div>
   `;
@@ -2098,14 +2356,14 @@ function renderSettings() {
   div.innerHTML = `
     <div class="mb-6"><h2 class="text-2xl font-bold text-gray-800 dark:text-white">设置</h2><p class="text-gray-500 dark:text-gray-400">系统配置与数据管理</p></div>
     <div class="space-y-6">
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-server text-primary"></i>API 配置</h3>
         <div class="mb-4"><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">后端 API 地址</label>
           <input type="text" id="settings-api-base" value="${getApiBase()}" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none" placeholder="https://your-api.workers.dev"></div>
         <button onclick="saveApiBase()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-all touch-btn">保存配置</button>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-palette text-primary"></i>外观与主题</h3>
         <div class="space-y-4">
           <!-- 深色模式 -->
@@ -2114,23 +2372,6 @@ function renderSettings() {
             <button onclick="toggleDarkMode()" class="w-14 h-8 rounded-full ${state.darkMode ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'} transition-colors relative touch-btn">
               <div class="absolute top-1 ${state.darkMode ? 'left-7' : 'left-1'} w-6 h-6 rounded-full bg-white shadow transition-all flex items-center justify-center"><i class="fas fa-${state.darkMode ? 'moon' : 'sun'} text-xs text-gray-600"></i></div>
             </button>
-          </div>
-          
-          <!-- 主题颜色 -->
-          <div>
-            <p class="font-medium text-gray-800 dark:text-white mb-2">主题颜色</p>
-            <div class="flex gap-3">
-              ${[
-                { color: 'indigo', label: '靛蓝', bg: 'bg-indigo-500' },
-                { color: 'blue', label: '天蓝', bg: 'bg-blue-500' },
-                { color: 'green', label: '翠绿', bg: 'bg-green-500' },
-                { color: 'purple', label: '紫罗兰', bg: 'bg-purple-500' },
-                { color: 'rose', label: '玫瑰', bg: 'bg-rose-500' },
-                { color: 'amber', label: '琥珀', bg: 'bg-amber-500' }
-              ].map(t => `
-                <button onclick="setThemeColor('${t.color}')" class="w-10 h-10 rounded-full ${t.bg} ${userPrefs.themeColor === t.color || (!userPrefs.themeColor && t.color === 'indigo') ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-800' : ''} hover:scale-110 transition-transform touch-btn" title="${t.label}"></button>
-              `).join('')}
-            </div>
           </div>
           
           <!-- 字体大小 -->
@@ -2149,7 +2390,7 @@ function renderSettings() {
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-stopwatch text-secondary"></i>番茄钟设置</h3>
         <div class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
@@ -2173,7 +2414,7 @@ function renderSettings() {
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-bell text-accent"></i>提醒与通知</h3>
         <div class="space-y-4">
           <div class="flex items-center justify-between">
@@ -2195,12 +2436,28 @@ function renderSettings() {
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-download text-secondary"></i>数据管理</h3>
         <div class="space-y-3">
+          <div class="p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+            <p class="font-medium text-gray-800 dark:text-white mb-2">允许上传的文件类型</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">配置日记中允许上传的文件类型。留空表示不限制（不推荐）。多个类型用逗号分隔，例如：image/*, .pdf, .doc</p>
+            <input type="text" id="settings-upload-types" value="${userPrefs.allowedUploadTypes || ''}" autocomplete="off"
+                   class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm" 
+                   placeholder="例如：image/*, video/*, .pdf, .doc, .zip">
+            <button onclick="saveUploadTypes()" class="mt-3 px-4 py-2 bg-secondary text-white rounded-xl text-sm font-medium hover:bg-secondary/90 transition-all touch-btn">保存上传类型配置</button>
+          </div>
           <button onclick="exportData()" class="w-full flex items-center gap-3 p-4 rounded-xl bg-secondary/5 dark:bg-secondary/10 text-secondary hover:bg-secondary/10 dark:hover:bg-secondary/20 transition-all text-left touch-btn">
             <div class="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center"><i class="fas fa-file-export"></i></div>
-            <div><p class="font-medium">导出数据</p><p class="text-xs text-gray-500 dark:text-gray-400">导出所有数据为 JSON</p></div>
+            <div><p class="font-medium">导出数据</p><p class="text-xs text-gray-500 dark:text-gray-400">导出所有数据为 JSON/Excel</p></div>
+          </button>
+          <button onclick="backupToCloud()" class="w-full flex items-center gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all text-left touch-btn">
+            <div class="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center"><i class="fas fa-download"></i></div>
+            <div><p class="font-medium">下载备份 ZIP</p><p class="text-xs text-gray-500 dark:text-gray-400">含数据+附件，可存到任何地方</p></div>
+          </button>
+          <button onclick="showBackupConfig()" class="w-full flex items-center gap-3 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-left touch-btn">
+            <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><i class="fas fa-cloud-upload-alt"></i></div>
+            <div><p class="font-medium">配置自动备份</p><p class="text-xs text-gray-500 dark:text-gray-400">设置备份到 GitHub/Webhook</p></div>
           </button>
           <button onclick="showImportModal()" class="w-full flex items-center gap-3 p-4 rounded-xl bg-primary/5 dark:bg-primary/10 text-primary hover:bg-primary/10 dark:hover:bg-primary/20 transition-all text-left touch-btn">
             <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><i class="fas fa-file-import"></i></div>
@@ -2213,23 +2470,23 @@ function renderSettings() {
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-exclamation-triangle text-accent"></i>快速记录拖延</h3>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">如果你此刻正在拖延，记录下来，不要批判自己。</p>
         <button onclick="showProcrastinationModal()" class="px-4 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 transition-all touch-btn"><i class="fas fa-pen mr-1"></i>记录拖延日志</button>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-        <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-keyboard text-calm"></i>快捷键</h3>
-        <div class="text-sm text-gray-600 dark:text-gray-400 space-y-2">
-          <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">1-9</kbd> 快速切换页面</p>
-          <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">/</kbd> 搜索任务</p>
-          <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Esc</kbd> 关闭弹窗</p>
-          <p><kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Enter</kbd> 提交表单</p>
+      <div class="card-modern p-6">
+        <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-key text-calm"></i>修改密码</h3>
+        <div class="space-y-3">
+          <input type="password" id="settings-old-pwd" placeholder="当前密码" autocomplete="new-password" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+          <input type="password" id="settings-new-pwd" placeholder="新密码（至少6位）" autocomplete="new-password" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+          <input type="password" id="settings-confirm-pwd" placeholder="确认新密码" autocomplete="new-password" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+          <button onclick="changePassword()" class="w-full px-4 py-3 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-check mr-1"></i>确认修改</button>
         </div>
       </div>
 
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="card-modern p-6">
         <h3 class="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2"><i class="fas fa-user text-calm"></i>账号</h3>
         <button onclick="logout()" class="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-danger rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-all touch-btn"><i class="fas fa-sign-out-alt mr-1"></i>退出登录</button>
       </div>
@@ -2243,6 +2500,27 @@ function saveApiBase() {
   if (!base) { showToast('请输入 API 地址', 'error'); return; }
   safeStorage.set('api_base', base);
   showToast('API 地址已保存并生效');
+}
+
+// 保存上传类型配置
+function saveUploadTypes() {
+  const types = $('#settings-upload-types').value.trim();
+  saveUserPrefs({ allowedUploadTypes: types });
+  showToast('上传类型配置已保存');
+}
+
+async function changePassword() {
+  const oldP = $('#settings-old-pwd').value;
+  const newP = $('#settings-new-pwd').value;
+  const confirmP = $('#settings-confirm-pwd').value;
+  if (!oldP || !newP) { showToast('请填写所有密码字段', 'error'); return; }
+  if (newP.length < 6) { showToast('新密码至少6位', 'error'); return; }
+  if (newP !== confirmP) { showToast('两次新密码不一致', 'error'); return; }
+  try {
+    await api.post('/api/auth/change-password', { oldPassword: oldP, newPassword: newP });
+    showToast('密码已修改，即将重新登录');
+    setTimeout(() => { logout(); }, 1500);
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 // ========== 高级定制功能（P3）==========
@@ -2260,30 +2538,6 @@ function getUserPrefs() {
 }
 
 // 设置主题颜色
-function setThemeColor(color) {
-  saveUserPrefs({ themeColor: color });
-  
-  // 更新 CSS 变量
-  const root = document.documentElement;
-  const colorMap = {
-    indigo: { 500: '#6366f1', 600: '#4f46e5', 100: '#e0e7ff' },
-    blue: { 500: '#3b82f6', 600: '#2563eb', 100: '#dbeafe' },
-    green: { 500: '#22c55e', 600: '#16a34a', 100: '#dcfce7' },
-    purple: { 500: '#a855f7', 600: '#9333ea', 100: '#f3e8ff' },
-    rose: { 500: '#f43f5e', 600: '#e11d48', 100: '#ffe4e6' },
-    amber: { 500: '#f59e0b', 600: '#d97706', 100: '#fef3c7' }
-  };
-  
-  if (colorMap[color]) {
-    root.style.setProperty('--color-primary', colorMap[color][500]);
-    root.style.setProperty('--color-primary-dark', colorMap[color][600]);
-    root.style.setProperty('--color-primary-light', colorMap[color][100]);
-  }
-  
-  showToast('主题颜色已更新');
-  navigate('settings');
-}
-
 // 设置字体大小
 function setFontSize(size) {
   saveUserPrefs({ fontSize: size });
@@ -2451,15 +2705,192 @@ async function executeClearData() {
 }
 
 async function exportData() {
+  // 显示导出选项弹窗
+  const modal = el('div', 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 modal-backdrop');
+  const today = new Date().toISOString().split('T')[0];
+  const lastMonth = new Date(Date.now() - 30*24*3600*1000).toISOString().split('T')[0];
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 modal-content shadow-2xl border border-gray-100 dark:border-gray-700">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="font-bold text-xl text-gray-800 dark:text-white">导出数据</h3>
+        <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">开始日期</label>
+          <input type="date" id="export-start" value="${lastMonth}" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">结束日期</label>
+          <input type="date" id="export-end" value="${today}" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">导出格式</label>
+          <div class="flex gap-2">
+            <button onclick="doExport('xlsx')" class="flex-1 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/30 transition-all text-sm font-medium touch-btn">
+              <i class="fas fa-file-excel mr-1"></i>Excel (.xlsx)
+            </button>
+            <button onclick="doExport('json')" class="flex-1 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-sm font-medium touch-btn">
+              <i class="fas fa-file-code mr-1"></i>JSON
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+// ========== 执行导出 ==========
+async function doExport(format) {
+  const start = $('#export-start')?.value;
+  const end = $('#export-end')?.value;
+  if (!start || !end) { showToast('请选择日期范围', 'error'); return; }
+  
   try {
-    const data = await api.get('/api/export');
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    a.download = `zhouji-export-${new Date().toISOString().split('T')[0]}.json`;
-    a.click(); URL.revokeObjectURL(url);
+    showToast('正在导出数据...', 'info');
+    const params = `?start=${start}&end=${end}`;
+    const data = await api.get('/api/export' + params);
+    const exportData = data.data || data; // 兼容包装格式
+    
+    if (format === 'xlsx') {
+      exportToExcel(exportData, start, end);
+    } else {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, `周迹导出_${start}_${end}.json`);
+    }
+    
+    $('.modal-backdrop')?.remove();
     showToast('数据导出成功');
   } catch (err) { showToast(err.message, 'error'); }
+}
+
+// 导出为 Excel（多Sheet）
+function exportToExcel(data, start, end) {
+  if (typeof XLSX === 'undefined') {
+    showToast('Excel 导出库加载失败，请检查网络', 'error');
+    return;
+  }
+  
+  const wb = XLSX.utils.book_new();
+  
+  // Sheet1: 任务
+  if (data.tasks && data.tasks.length) {
+    const rows = data.tasks.map(t => ({
+      '任务ID': t.id,
+      '标题': t.title,
+      '描述': t.description || '',
+      '分类': t.category || '',
+      '优先级': t.priority || '',
+      '状态': t.status || '',
+      '难度': t.difficulty || '',
+      '创建时间': t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : '',
+      '完成时间': t.completed_at ? new Date(t.completed_at).toLocaleString('zh-CN') : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 8 }, { wch: 30 }, { wch: 40 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 6 }, { wch: 20 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws, '任务');
+  }
+  
+  // Sheet2: 日记
+  if (data.diary && data.diary.length) {
+    const rows = data.diary.map(d => ({
+      '日记ID': d.id,
+      '标题': d.title || '',
+      '内容': d.content || '',
+      '心情': d.mood || '',
+      '天气': d.weather || '',
+      '模板类型': d.template_type || '',
+      '创建时间': d.created_at ? new Date(d.created_at).toLocaleString('zh-CN') : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 8 }, { wch: 25 }, { wch: 60 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws, '日记');
+  }
+  
+  // Sheet3: 番茄钟记录
+  if (data.pomodoro && data.pomodoro.length) {
+    const rows = data.pomodoro.map(p => ({
+      '记录ID': p.id,
+      '任务ID': p.task_id || '',
+      '类型': p.type || '',
+      '持续时间(分钟)': p.duration || '',
+      '完成时间': p.completed_at ? new Date(p.completed_at).toLocaleString('zh-CN') : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '番茄钟');
+  }
+  
+  // Sheet4: 情绪记录
+  if (data.emotions && data.emotions.length) {
+    const rows = data.emotions.map(e => ({
+      '记录ID': e.id,
+      '情绪类型': e.emotion_type || '',
+      '强度': e.intensity || '',
+      '备注': e.notes || '',
+      '记录时间': e.created_at ? new Date(e.created_at).toLocaleString('zh-CN') : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '情绪记录');
+  }
+  
+  // Sheet5: 拖延日志
+  if (data.procrastination && data.procrastination.length) {
+    const rows = data.procrastination.map(p => ({
+      '日志ID': p.id,
+      '原因类型': p.reason_type || '',
+      '详细说明': p.reason_detail || '',
+      '干扰源': p.distraction_source || '',
+      '记录时间': p.created_at ? new Date(p.created_at).toLocaleString('zh-CN') : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '拖延日志');
+  }
+  
+  // Sheet6: 周计划
+  if (data.weeklyPlans && data.weeklyPlans.length) {
+    const WD = ['周日','周一','周二','周三','周四','周五','周六'];
+    const rows = data.weeklyPlans.map(w => ({
+      '计划ID': w.id,
+      '标题': w.title || '',
+      '描述': w.description || '',
+      '分类': w.category || '',
+      '星期': w.day_of_week !== null && w.day_of_week !== undefined ? (WD[w.day_of_week] || w.day_of_week) : '任务池',
+      '开始时间': w.start_time || '',
+      '结束时间': w.end_time || '',
+      '状态': w.status === 'completed' ? '已完成' : '待完成',
+      '周起始': w.week_start || '',
+      '来源': w.source || '',
+      '创建时间': w.created_at ? new Date(w.created_at).toLocaleString('zh-CN') : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, '周计划');
+  }
+  
+  // 检查是否有数据
+  if (wb.SheetNames.length === 0) {
+    showToast('没有数据可导出，请先创建一些内容', 'warning');
+    return;
+  }
+  
+  try {
+    XLSX.writeFile(wb, `周迹导出_${start}_${end}.xlsx`);
+    showToast('Excel 导出成功！', 'success');
+  } catch (err) {
+    showToast('导出失败: ' + err.message, 'error');
+  }
+}
+
+// 下载 Blob 文件
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function showImportModal() {
@@ -2479,6 +2910,421 @@ function showImportModal() {
     </div>
   `;
   document.body.appendChild(modal);
+}
+
+// ========== 一键备份/导出 ==========
+async function backupToCloud() {
+  showToast('正在打包备份数据...', 'info');
+  try {
+    // 加载 JSZip
+    if (!window.JSZip) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    
+    const zip = new JSZip();
+    const data = await api.get('/api/export');
+    if (!data || !data.data) { showToast('没有可备份的数据', 'warning'); return; }
+    
+    // 添加数据 JSON
+    zip.file('数据.json', JSON.stringify(data.data, null, 2));
+    
+    // 添加附件（从 diary 和 tasks 中提取附件 URL）
+    let attachmentCount = 0;
+    const attachmentUrls = new Set();
+    
+    // 从日记中提取附件
+    if (data.data.diary) {
+      data.data.diary.forEach(d => {
+        // 检查是否有关联的媒体文件字段
+        if (d.file_url) attachmentUrls.add(d.file_url);
+        // 也检查 content 中的图片链接
+        if (d.content && d.content.includes('file_url')) {
+          try { const c = JSON.parse(d.content); if (c.file_url) attachmentUrls.add(c.file_url); } catch(e) {}
+        }
+      });
+    }
+    
+    // 从日记媒体表中提取
+    if (data.data.diaryMedia) {
+      data.data.diaryMedia.forEach(m => {
+        if (m.file_url) attachmentUrls.add(m.file_url);
+      });
+    }
+    
+    // 下载附件并添加到 ZIP
+    const urls = [...attachmentUrls].slice(0, 50); // 限制最多 50 个附件
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        showToast(`正在下载附件 (${i+1}/${urls.length})...`, 'info');
+        const resp = await fetch(urls[i], { mode: 'cors' });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const fileName = urls[i].split('/').pop() || `attachment_${i+1}`;
+          zip.file(`attachments/${fileName}`, blob);
+          attachmentCount++;
+        }
+      } catch (e) {
+        console.warn('附件下载失败:', urls[i], e.message);
+      }
+    }
+    
+    // 生成 ZIP
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.download = `周迹完整备份_${dateStr}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast(`备份完成！包含 ${Object.keys(data.data).length} 类数据${attachmentCount > 0 ? ` + ${attachmentCount} 个附件` : ''}`, 'success');
+  } catch (err) {
+    console.error('备份失败:', err);
+    showToast('备份失败: ' + (err.message || err), 'error');
+  }
+}
+
+// ========== 备份配置弹窗 ==========
+function showBackupConfig() {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  const modal = el('div', 'fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 pt-8 modal-backdrop');
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 modal-content shadow-2xl">
+      <div class="flex items-center justify-between mb-6 sticky top-0 bg-white dark:bg-gray-800 z-10 pb-2">
+        <h3 class="font-bold text-xl text-gray-800 dark:text-white"><i class="fas fa-cloud-upload-alt text-primary mr-2"></i>自动备份配置</h3>
+        <button onclick="this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div class="space-y-6">
+        <!-- 百度网盘备份 -->
+        <div class="p-4 rounded-xl border border-gray-200 dark:border-gray-600">
+          <h4 class="font-medium text-gray-800 dark:text-white mb-1 flex items-center gap-2">
+            <i class="fab fa-baidu text-blue-500"></i>备份到百度网盘
+          </h4>
+          <p class="text-xs text-gray-500 mb-3">通过百度 OAuth 授权后，一键备份到你的百度网盘。需要 basic（用户信息）+ netdisk（文件上传）权限。</p>
+          <div class="space-y-3">
+            <!-- 全局配置提示 -->
+            <div id="baidu-global-badge" class="mb-2 p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
+              <p class="text-xs text-green-700 dark:text-green-400">
+                <i class="fas fa-check-circle mr-1"></i>已启用全局配置，无需输入密钥
+              </p>
+            </div>
+            
+            <div id="baidu-config-form">
+              <div id="baidu-user-inputs" style="display:none">
+                <input type="text" id="baidu-app-key" value="${prefs.baiduAppKey || ''}" placeholder="百度 App Key（API Key）" autocomplete="off" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm mb-2 focus:border-primary outline-none">
+                <input type="text" id="baidu-secret-key" value="${prefs.baiduSecretKey || ''}" placeholder="百度 Secret Key" autocomplete="off" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm mb-2 focus:border-primary outline-none">
+                <p class="text-xs text-gray-400 mb-2">在 <a href="https://pan.baidu.com/union/home" target="_blank" class="text-primary hover:underline">百度开放平台</a> 创建应用后获取，需勾选 basic + netdisk 权限</p>
+              </div>
+              <div class="flex gap-2">
+                <button id="baidu-save-btn" onclick="saveBaiduConfig()" class="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-all">保存配置</button>
+                <button onclick="connectBaiduDrive()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all">
+                  <i class="fas fa-link mr-1"></i>授权百度网盘
+                </button>
+              </div>
+            </div>
+            <div id="baidu-connected-info" style="display:none" class="p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
+              <p class="text-sm text-green-700 dark:text-green-400"><i class="fas fa-check-circle mr-1"></i>已连接百度网盘</p>
+              
+              <!-- 日期选择 -->
+              <div class="mt-3 mb-3 p-2 rounded-lg bg-white/50 dark:bg-gray-800/50">
+                <p class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">📅 数据范围（留空=全量备份）</p>
+                <div class="flex gap-2 items-center">
+                  <input type="date" id="baidu-backup-from" class="flex-1 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+                  <span class="text-xs text-gray-400">至</span>
+                  <input type="date" id="baidu-backup-to" class="flex-1 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none">
+                </div>
+                <p class="text-xs text-gray-400 mt-1">不选日期则备份全部数据</p>
+              </div>
+              
+              <div class="flex gap-2 mt-2">
+                <button onclick="backupToBaiduDrive()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all">
+                  <i class="fas fa-upload mr-1"></i>立即备份到百度网盘
+                </button>
+                <button onclick="disconnectBaiduDrive()" class="px-3 py-2 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition-all">断开连接</button>
+              </div>
+              <p id="baidu-backup-status" class="text-xs text-gray-400 mt-1"></p>
+              <div id="baidu-backup-result" style="display:none" class="mt-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-400"></div>
+            </div>
+          </div>
+        </div>
+        <!-- GitHub 备份 -->
+        <div class="p-4 rounded-xl border border-gray-200 dark:border-gray-600">
+          <h4 class="font-medium text-gray-800 dark:text-white mb-1 flex items-center gap-2">
+            <i class="fab fa-github text-gray-800 dark:text-white"></i>备份到 GitHub
+          </h4>
+          <p class="text-xs text-gray-500 mb-3">数据会提交到你的私有仓库，可恢复/迁移</p>
+          <div class="space-y-3">
+            <input type="password" id="gh-token" value="${prefs.ghToken || ''}" placeholder="GitHub Personal Access Token（需 repo 权限）" autocomplete="off" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:border-primary outline-none">
+            <input type="text" id="gh-repo" value="${prefs.ghRepo || ''}" placeholder="仓库名：用户名/仓库名" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:border-primary outline-none">
+            <div class="flex gap-2">
+              <button onclick="saveBackupConfig(this)" class="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-all">保存配置</button>
+              <button onclick="backupToGitHub()" class="flex-1 px-4 py-2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-800 rounded-lg text-sm font-medium hover:bg-gray-700 dark:hover:bg-gray-300 transition-all">
+                <i class="fab fa-github mr-1"></i>立即备份到 GitHub
+              </button>
+            </div>
+            <p id="gh-backup-status" class="text-xs text-gray-400"></p>
+          </div>
+        </div>
+        <!-- Webhook 备份 -->
+        <div class="p-4 rounded-xl border border-gray-200 dark:border-gray-600">
+          <h4 class="font-medium text-gray-800 dark:text-white mb-1 flex items-center gap-2">
+            <i class="fas fa-link text-blue-500"></i>备份到 Webhook（自定义 URL）
+          </h4>
+          <p class="text-xs text-gray-500 mb-3">数据会 POST 到你的自定义服务地址</p>
+          <div class="space-y-3">
+            <input type="url" id="webhook-url" value="${prefs.webhookUrl || ''}" placeholder="例如：https://your-server.com/backup" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:border-primary outline-none">
+            <div class="flex gap-2">
+              <button onclick="saveBackupConfig(this)" class="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-all">保存配置</button>
+              <button onclick="backupToWebhook()" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-all">
+                <i class="fas fa-paper-plane mr-1"></i>立即备份到 Webhook
+              </button>
+            </div>
+            <p id="webhook-backup-status" class="text-xs text-gray-400"></p>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 text-center pb-2">备份数据为 JSON 格式，包含所有任务、日记、情绪、附件记录等。<br>可在「导入数据」功能中恢复。</p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  setTimeout(checkBaiduStatus, 500);
+}
+
+// 保存备份配置（保存后关闭弹窗）
+window.saveBackupConfig = function(btn) {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  prefs.ghToken = document.getElementById('gh-token')?.value?.trim() || '';
+  prefs.ghRepo = document.getElementById('gh-repo')?.value?.trim() || '';
+  prefs.webhookUrl = document.getElementById('webhook-url')?.value?.trim() || '';
+  safeStorage.set('user_prefs', JSON.stringify(prefs));
+  showToast('备份配置已保存', 'success');
+  if (btn) btn.closest('.modal-backdrop')?.remove();
+};
+
+// 备份到 GitHub
+window.backupToGitHub = async function() {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  const token = prefs.ghToken;
+  const repo = prefs.ghRepo;
+  const statusEl = document.getElementById('gh-backup-status');
+  
+  if (!token || !repo) { statusEl.textContent = '请先填写 Token 和仓库名'; return; }
+  
+  try {
+    statusEl.textContent = '正在获取数据...';
+    const data = await api.get('/api/export');
+    if (!data || !data.data) { statusEl.textContent = '没有数据可备份'; return; }
+    
+    const jsonContent = JSON.stringify({ version: '1.0', exportedAt: new Date().toISOString(), data: data.data }, null, 2);
+    const fileName = `backup_${new Date().toISOString().split('T')[0]}.json`;
+    const encoded = btoa(unescape(encodeURIComponent(jsonContent)));
+    
+    statusEl.textContent = '正在上传到 GitHub...';
+    
+    // 检查文件是否存在，如果存在就更新
+    const getResp = await fetch(`https://api.github.com/repos/${repo}/contents/${fileName}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    
+    let sha = null;
+    if (getResp.ok) {
+      const existing = await getResp.json();
+      sha = existing.sha;
+    }
+    
+    const putResp = await fetch(`https://api.github.com/repos/${repo}/contents/${fileName}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+      body: JSON.stringify({
+        message: `备份 ${new Date().toLocaleString('zh-CN')}`,
+        content: encoded,
+        sha: sha || undefined
+      })
+    });
+    
+    if (putResp.ok) {
+      statusEl.textContent = `✅ 备份成功！文件: ${fileName}`;
+      prefs.lastGhBackup = new Date().toISOString();
+      safeStorage.set('user_prefs', JSON.stringify(prefs));
+      showToast('GitHub 备份成功！', 'success');
+    } else {
+      const err = await putResp.json();
+      statusEl.textContent = `❌ 备份失败: ${err.message}`;
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ 备份失败: ' + (err.message || err);
+  }
+};
+
+// 备份到 Webhook
+window.backupToWebhook = async function() {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  const url = prefs.webhookUrl;
+  const statusEl = document.getElementById('webhook-backup-status');
+  
+  if (!url) { statusEl.textContent = '请先填写 Webhook URL'; return; }
+  
+  try {
+    statusEl.textContent = '正在获取数据...';
+    const data = await api.get('/api/export');
+    if (!data || !data.data) { statusEl.textContent = '没有数据可备份'; return; }
+    
+    const payload = { version: '1.0', exportedAt: new Date().toISOString(), data: data.data };
+    
+    statusEl.textContent = '正在发送到 Webhook...';
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    if (resp.ok) {
+      statusEl.textContent = '✅ Webhook 备份成功！';
+      showToast('Webhook 备份成功！', 'success');
+    } else {
+      statusEl.textContent = `❌ Webhook 返回 ${resp.status}`;
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ 备份失败: ' + (err.message || err);
+  }
+};
+
+// ========== 百度网盘备份 ==========
+function saveBaiduConfig() {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  prefs.baiduAppKey = document.getElementById('baidu-app-key')?.value?.trim() || '';
+  prefs.baiduSecretKey = document.getElementById('baidu-secret-key')?.value?.trim() || '';
+  safeStorage.set('user_prefs', JSON.stringify(prefs));
+  showToast('百度配置已保存', 'success');
+}
+
+async function connectBaiduDrive() {
+  const prefs = JSON.parse(safeStorage.get('user_prefs') || '{}');
+  const userId = safeStorage.get('userId');
+  if (!userId) { showToast('请先登录', 'error'); return; }
+  
+  try {
+    // 构建参数（优先使用全局配置，后端会自动读取环境变量）
+    let url = `/api/cloud-drive/baidu/auth-url?frontend=${encodeURIComponent(window.location.origin)}`;
+    
+    // 如果用户有自己的配置，带上参数
+    if (prefs.baiduAppKey && prefs.baiduSecretKey) {
+      url += `&app_key=${prefs.baiduAppKey}&secret_key=${prefs.baiduSecretKey}`;
+    }
+    
+    // 后端生成完整 OAuth URL（含 state）
+    const resp = await api.get(url);
+    if (!resp.url) { showToast('获取授权地址失败', 'error'); return; }
+    
+    // 跳转到百度授权
+    window.location.href = resp.url;
+  } catch (err) {
+    showToast('连接失败: ' + (err.message || err), 'error');
+  }
+}
+
+async function backupToBaiduDrive() {
+  const statusEl = document.getElementById('baidu-backup-status');
+  const resultEl = document.getElementById('baidu-backup-result');
+  if (!statusEl) return;
+  
+  // 读取日期选择
+  const dateFrom = document.getElementById('baidu-backup-from')?.value || '';
+  const dateTo = document.getElementById('baidu-backup-to')?.value || '';
+  const hasDate = dateFrom && dateTo;
+  
+  statusEl.textContent = hasDate ? '正在获取数据...' : '正在全量备份所有数据...';
+  if (resultEl) resultEl.style.display = 'none';
+  
+  try {
+    statusEl.textContent = '正在上传到百度网盘...';
+    const resp = await api.post('/api/cloud-drive/baidu/backup', { 
+      dateFrom, dateTo 
+    });
+    
+    if (resp.success) {
+      statusEl.textContent = '';
+      const s = resp.summary || {};
+      if (resultEl) {
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = `
+          <div class="space-y-1">
+            <p><i class="fas fa-check-circle text-green-500 mr-1"></i>✅ 备份成功！</p>
+            <p>📁 ${s.date || '全量'} 备份</p>
+            <p>📊 ${s.dataItems || 0} 条数据 / ${s.dataFiles || 0} 个数据文件</p>
+            <p>📎 ${s.attachments || 0}/${s.attachmentTotal || 0} 个附件</p>
+            <p class="text-xs text-gray-400 mt-1">百度网盘路径：<code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">${s.folder || resp.folder || ''}</code></p>
+          </div>
+        `;
+      }
+      showToast('百度网盘备份成功！', 'success');
+    } else {
+      statusEl.textContent = '❌ 备份失败: ' + (resp.error || '未知错误');
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ 备份失败: ' + (err.message || err);
+  }
+}
+
+async function disconnectBaiduDrive() {
+  try {
+    await api.post('/api/cloud-drive/baidu/disconnect', {});
+    showToast('已断开百度网盘连接', 'success');
+    // 刷新页面更新 UI
+    document.querySelector('.modal-backdrop')?.remove();
+    showBackupConfig();
+  } catch (err) {
+    showToast('断开失败: ' + (err.message || err), 'error');
+  }
+}
+
+// 检查百度网盘配置状态（全局+连接）
+async function checkBaiduStatus() {
+  try {
+    // 1. 检查全局配置状态
+    const configResp = await api.get('/api/cloud-drive/baidu/config-status');
+    const badge = document.getElementById('baidu-global-badge');
+    const inputs = document.getElementById('baidu-user-inputs');
+    const saveBtn = document.getElementById('baidu-save-btn');
+    
+    if (badge && inputs && saveBtn) {
+      if (configResp.hasGlobalConfig && !configResp.hasUserConfig) {
+        // 使用全局配置：显示提示，隐藏输入框
+        badge.style.display = 'block';
+        inputs.style.display = 'none';
+        saveBtn.style.display = 'none';
+      } else {
+        // 用户自定义配置：显示输入框，隐藏提示
+        badge.style.display = 'none';
+        inputs.style.display = 'block';
+        saveBtn.style.display = 'inline-block';
+      }
+    }
+    
+    // 2. 检查连接状态
+    const resp = await api.get('/api/cloud-drive/baidu/status');
+    const form = document.getElementById('baidu-config-form');
+    const info = document.getElementById('baidu-connected-info');
+    if (form && info) {
+      if (resp.connected) {
+        form.style.display = 'none';
+        info.style.display = 'block';
+      } else {
+        form.style.display = 'block';
+        info.style.display = 'none';
+      }
+    }
+  } catch(e) {}
 }
 
 async function handleImportFile(event) {
@@ -2558,55 +3404,33 @@ window.addEventListener('hashchange', () => {
   render();
 });
 
-// 网络状态监听
-window.addEventListener('online', function() {
-  api._isOnline = true;
-  showToast('网络已恢复', 'success');
-  api._syncOfflineQueue();
-});
-window.addEventListener('offline', function() {
-  api._isOnline = false;
-  showToast('进入离线模式，数据将在恢复后同步', 'warning');
-});
-
-// 首次加载
+// 首次加载 - 统一初始化入口
 window.addEventListener('DOMContentLoaded', function() {
-  var queue = safeStorage.get('offline_queue');
-  if (queue) {
-    try { api._offlineQueue = JSON.parse(queue); } catch (e) {}
-  }
   restoreTimerState();
-  render();
-
-  // 修复 FE-016: 注册 Service Worker 实现 PWA 离线功能
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(function(reg) {
-      // SW注册成功（生产环境静默）
-      console.log('SW registered:', reg.scope);
-    }).catch(function(err) {
-      console.warn('SW registration failed:', err);
-    });
-  }
-
-  // 修复 FE-007: 登录后自动同步离线队列
-  if (navigator.onLine && api._offlineQueue.length > 0) {
-    api._syncOfflineQueue();
+  const token = safeStorage.get('token');
+  const hash = window.location.hash.slice(2) || 'dashboard';
+  if (token && hash !== 'login') {
+    // 有 token 且 hash 指向非登录页，导航到对应的页面
+    navigate(hash);
+  } else if (token && hash === 'login') {
+    navigate('dashboard');
+  } else {
+    navigate('login');
   }
 });
 
 // 页面可见性变化（后台计时器处理）
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.timerRunning) {
-    // 恢复计时器显示
+  if (!document.hidden && (typeof timerRunning !== 'undefined' && timerRunning || typeof pomoRunning !== 'undefined' && pomoRunning)) {
     updateTimerDisplay();
   }
 });
 
 // 防止意外关闭时的计时器丢失
 window.addEventListener('beforeunload', (event) => {
-  if (state.timerRunning && timerSeconds > 0) {
+  if ((typeof timerRunning !== 'undefined' && timerRunning || typeof pomoRunning !== 'undefined' && pomoRunning) && 
+      ((typeof timerSeconds !== 'undefined' && timerSeconds > 0) || (typeof pomoSeconds !== 'undefined' && pomoSeconds > 0))) {
     saveTimerState();
-    // 修复 FE-004: 阻止默认关闭行为，提示用户
     event.preventDefault();
     event.returnValue = '';
   }
@@ -2666,6 +3490,12 @@ window.recordRelapse = recordRelapse;
 window.deleteTask = deleteTask;
 window.deleteTimeBlock = deleteTimeBlock;
 window.exportData = exportData;
+window.backupToCloud = backupToCloud;
+window.showBackupConfig = showBackupConfig;
+window.saveBaiduConfig = saveBaiduConfig;
+window.connectBaiduDrive = connectBaiduDrive;
+window.backupToBaiduDrive = backupToBaiduDrive;
+window.disconnectBaiduDrive = disconnectBaiduDrive;
 window.filterTasks = filterTasks;
 window.finishTimer = finishTimer;
 window.handleImportFile = handleImportFile;
@@ -2679,6 +3509,7 @@ window.pausePomodoro = pausePomodoro;
 window.quickMicroStart = quickMicroStart;
 window.resetPomodoro = resetPomodoro;
 window.saveApiBase = saveApiBase;
+window.changePassword = changePassword;
 window.saveEmotion = saveEmotion;
 window.saveProcrastinationLog = saveProcrastinationLog;
 window.selectBlockEnergy = selectBlockEnergy;
@@ -2709,7 +3540,6 @@ window.useTemplate = useTemplate;
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.logout = logout;
-window.setThemeColor = setThemeColor;
 window.setFontSize = setFontSize;
 window.savePomodoroSettings = savePomodoroSettings;
 window.saveReminderSettings = saveReminderSettings;
@@ -2719,13 +3549,5 @@ window.showConfirmModal = showConfirmModal;
 window.setupModalFocusTrap = setupModalFocusTrap;
 window.escapeHtml = window.escapeHtml || escapeHtml;
 
-// ========== 初始化 ==========
-document.addEventListener('DOMContentLoaded', function() {
-  const token = localStorage.getItem('token');
-  if (token) {
-    navigate('dashboard');
-  } else {
-    navigate('login');
-  }
-});
+// ========== IIFE 结束 ==========
 })();

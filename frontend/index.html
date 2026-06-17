@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#4F46E5">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -12,14 +12,13 @@
   <meta name="robots" content="index, follow">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%234F46E5' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='serif'%3E周%3C/text%3E%3C/svg%3E">
-  <title>周迹 - 不是管理时间，是管理启动 v2.4</title>
+  <title>周迹 - 拖延症干预系统 v2.4</title>
   
   <!-- 部署配置 -->
   <script>
     window.__DEPLOY_CONFIG__ = {
       API_BASE_URL: 'https://zhouji-api.wo1203656818.workers.dev'
     };
-    // 全局 HTML 转义函数（所有 JS 文件之前定义，用于 XSS 防护）
     window.escapeHtml = function(str) {
       if (!str && str !== 0) return '';
       var d = document.createElement('div');
@@ -27,100 +26,53 @@
       return d.innerHTML;
     };
   </script>
-  
-  <!-- Tailwind CSS (config 必须在 CDN 之前定义) -->
+
+  <!-- Tailwind CSS -->
   <script>
-    // 修复: tailwind.config 必须在 cdn.tailwindcss.com 加载之前定义
-    // 否则 "tailwind is not defined" 报错
     window.__tailwind_config = {
       darkMode: 'class',
       theme: {
         extend: {
           colors: {
-            primary: '#4F46E5',
+            primary: '#6366F1',
             secondary: '#10B981',
             accent: '#F59E0B',
-            danger: '#EF4444',
-            warm: '#F97316',
-            calm: '#3B82F6',
-            surface: '#F8FAFC',
-            'surface-dark': '#1E293B'
+            danger: '#EF4444'
           }
         }
       }
     };
-    // 兼容 cdn.tailwindcss.com 的两种加载方式
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
     if (typeof tailwind !== 'undefined' && tailwind.config) {
       tailwind.config = window.__tailwind_config;
     }
   </script>
-  <script>
-    // 为 cdn.tailwindcss.com 提供 tailwind 全局变量
-    // 某些版本的 CDN Play 脚本需要 tailwind 全局已存在
-    window.tailwind = window.tailwind || { config: window.__tailwind_config };
-  </script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    // CDN 加载后的二次确认
-    if (typeof tailwind !== 'undefined' && tailwind.config !== window.__tailwind_config) {
-      tailwind.config = window.__tailwind_config;
-    } else if (typeof tailwind === 'undefined') {
-      console.warn('Tailwind CSS CDN 加载失败，使用备用样式');
-    }
-  </script>
-  
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- 自定义样式 -->
+
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- 核心样式表 -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- 额外全局样式 -->
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
-    * { -webkit-tap-highlight-color: transparent; }
-    body { font-family: 'Noto Sans SC', sans-serif; overscroll-behavior-y: none; }
-    .fade-in { animation: fadeIn 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    .slide-up { animation: slideUp 0.3s ease-out; }
-    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-    .pulse-soft { animation: pulseSoft 2s infinite; }
-    @keyframes pulseSoft { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-    .timer-circle { transition: stroke-dashoffset 1s linear; }
-    .gradient-text { background: linear-gradient(135deg, #4F46E5, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
-    .dark .glass { background: rgba(30,41,59,0.85); }
-    .glass-card { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border-radius: 1rem; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.2); }
-    .dark .glass-card { background: rgba(30,41,59,0.85); border-color: rgba(255,255,255,0.05); }
-    .btn-primary { display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; background-color: #4F46E5; color: white; border-radius: 0.75rem; font-weight: 500; transition: all 0.2s; min-height: 44px; cursor: pointer; border: none; }
-    .btn-primary:hover { background-color: #4338ca; }
-    .dark .btn-primary:hover { background-color: #4338ca; }
-    .step-card { transition: all 0.25s cubic-bezier(0.4,0,0.2,1); }
-    .step-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -8px rgba(0,0,0,0.12); }
-    .emotion-btn { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
-    .emotion-btn:hover { transform: scale(1.04); }
-    .emotion-btn.selected { ring: 2px; ring-offset: 2px; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-    .dark ::-webkit-scrollbar-thumb { background: #475569; }
-    .dark ::-webkit-scrollbar-thumb:hover { background: #64748B; }
-    .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center; }
-    .dark .loading-overlay { background: rgba(15,23,42,0.8); }
-    .skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: skeleton 1.5s infinite; }
-    @keyframes skeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .dark .skeleton { background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%); background-size: 200% 100%; }
-    .pomodoro-active { animation: pomodoroPulse 1s infinite; }
-    @keyframes pomodoroPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { box-shadow: 0 0 0 12px rgba(239,68,68,0); } }
-    .pomodoro-break { animation: breakPulse 1s infinite; }
-    @keyframes breakPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); } 50% { box-shadow: 0 0 0 12px rgba(16,185,129,0); } }
-    .touch-btn { min-height: 44px; min-width: 44px; }
-    .modal-backdrop { animation: modalFade 0.2s ease-out; }
-    @keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
-    .modal-content { animation: modalSlide 0.25s cubic-bezier(0.4,0,0.2,1); }
-    @keyframes modalSlide { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-    .animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.4,0,0.2,1); }
-    @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    /* 移动端关键修复：使用 dvh 防止键盘弹出时页面重排导致输入框失焦 */
+    html, body { min-height: 100dvh; min-height: -webkit-fill-available; }
+    .min-h-screen { min-height: 100dvh !important; min-height: -webkit-fill-available !important; }
+    /* 防止 iOS 输入框自动缩放导致焦点丢失 */
+    input[type="text"], input[type="password"], input[type="email"], textarea, select.form-input {
+      font-size: 16px !important;
+      -webkit-user-select: text;
+      user-select: text;
+      touch-action: manipulation;
+    }
+    /* 修复 iOS PWA 安全区域 */
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    .touch-btn { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .card-modern { transition: all 0.2s ease; }
+    .dark body { background: #0F172A; }
   </style>
 
   <!-- 提前设置深色模式，防止闪烁 -->
@@ -134,8 +86,10 @@
   </script>
   
   <link rel="manifest" href="/manifest.json">
+  <!-- SheetJS (xlsx) 用于导出 Excel 文件 -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-300">
+<body class="text-gray-800 dark:text-gray-100 min-h-screen transition-colors duration-300">
   <noscript>
     <div style="padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
       <div style="width: 64px; height: 64px; margin: 0 auto 1rem; background: #4F46E5; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: bold;">周</div>
@@ -161,6 +115,7 @@
   <script src="assistant.js"></script>
   <script src="achievement.js"></script>
   <script src="social.js"></script>
+  <script src="weekly.js"></script>
   <script src="app.js"></script>
   
   <script>

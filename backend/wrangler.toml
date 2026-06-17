@@ -8,8 +8,14 @@ binding = "DB"
 database_name = "zhouji-db"
 database_id = "75ec6cc9-f215-40a5-812d-83cc30f88293"
 
+[[r2_buckets]]
+binding = "ATTACHMENTS"
+bucket_name = "zhouji-attachments"
+
 [vars]
 NODE_ENV = "production"
-# JWT_SECRET 请使用 wrangler secret put JWT_SECRET 设置，不要明文写在 toml 中
-# 首次部署执行: wrangler secret put JWT_SECRET
-# 输入一个至少32位的随机字符串作为密钥
+FRONTEND_URL = "https://zhouji-frontend.pages.dev"
+# 百度网盘配置请使用 wrangler secret put:
+#   wrangler secret put BAIDU_APP_KEY
+#   wrangler secret put BAIDU_SECRET_KEY
+# JWT_SECRET 请使用 wrangler secret put JWT_SECRET 设置

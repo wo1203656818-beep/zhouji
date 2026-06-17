@@ -2,7 +2,7 @@
   "name": "zhouji-api",
   "version": "2.2.0",
   "description": "周迹 - 拖延症干预系统后端 API v2.2 (安全增强版)",
-  "main": "src/index.js",
+  "main": "index.js",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

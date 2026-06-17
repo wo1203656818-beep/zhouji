@@ -1,6 +1,23 @@
 // ==================== 数据可视化页面 ====================
 // Chart.js 已在 index.html 中全局加载，无需重复加载
 
+// 本地的情绪/拖延原因中英文映射（不依赖 app.js 的全局函数——stats.js 先于 app.js 加载）
+function getEmotionLabelLocal(code) {
+  var map = {
+    'vague': '任务太模糊', 'fear': '害怕失败', 'boring': '太无聊', 'too_boring': '太无聊',
+    'distracted': '被其他事吸引', 'tired': '身体疲惫', 'anxious': '焦虑不安',
+    'happy': '开心', 'calm': '平静', 'sad': '难过', 'angry': '生气',
+    'excited': '兴奋', 'worried': '担忧', 'neutral': '中性',
+    'confident': '自信', 'overwhelmed': '不堪重负', 'hopeful': '满怀希望',
+    'frustrated': '沮丧', 'grateful': '感恩', 'lonely': '孤独',
+    'perfectionism': '完美主义', 'low_motivation': '动机不足', 'lack_energy': '缺乏能量',
+    'poor_planning': '计划不周', 'too_large': '任务太大',
+    'manual': '手动', 'weekly_plan_sync': '周计划同步', 'template': '模板',
+    'weekly_plan': '周计划'
+  };
+  return map[code] || code;
+}
+
 // ========== 渲染统计页面 ==========
 async function renderStats() {
   const div = el('div', 'p-4 md:p-8 max-w-7xl mx-auto fade-in');
@@ -23,13 +40,13 @@ async function renderStats() {
       <!-- 任务完成趋势 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">📈 任务完成趋势</h3>
-        <canvas id="taskTrendChart" style="max-height: 40vh;" class="md:max-h-[300px]"></canvas>
+        <canvas id="taskTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 情绪变化曲线 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">😊 情绪变化曲线</h3>
-        <canvas id="emotionTrendChart" style="max-height: 40vh;" class="md:max-h-[300px]"></canvas>
+        <canvas id="emotionTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 习惯养成热力图 -->
@@ -41,7 +58,25 @@ async function renderStats() {
       <!-- 拖延模式分析 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🧠 拖延模式分析</h3>
-        <canvas id="procrastinationChart" style="max-height: 40vh;" class="md:max-h-[300px]"></canvas>
+        <canvas id="procrastinationChart" style="max-height: 300px;"></canvas>
+      </div>
+
+      <!-- 日记趋势 -->
+      <div class="glass p-6 rounded-2xl">
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">📝 日记趋势</h3>
+        <canvas id="diaryTrendChart" style="max-height: 300px;"></canvas>
+      </div>
+
+      <!-- 启动记录 -->
+      <div class="glass p-6 rounded-2xl">
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🚀 微启动记录</h3>
+        <canvas id="microStartChart" style="max-height: 300px;"></canvas>
+      </div>
+
+      <!-- 番茄钟统计 -->
+      <div class="glass p-6 rounded-2xl">
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🍅 番茄钟统计</h3>
+        <canvas id="pomodoroChart" style="max-height: 300px;"></canvas>
       </div>
     </div>
 
@@ -63,12 +98,31 @@ async function renderStats() {
         <p class="text-3xl font-bold text-danger" id="stat-relapse-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">破戒次数</p>
       </div>
+      <div class="glass p-6 rounded-2xl text-center">
+        <p class="text-3xl font-bold text-indigo-500" id="stat-diary-count">0</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">日记数</p>
+      </div>
+      <div class="glass p-6 rounded-2xl text-center">
+        <p class="text-3xl font-bold text-cyan-500" id="stat-micro-count">0</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">启动次数</p>
+      </div>
+      <div class="glass p-6 rounded-2xl text-center">
+        <p class="text-3xl font-bold text-emerald-500" id="stat-commitment-count">0</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">承诺总数</p>
+      </div>
+      <div class="glass p-6 rounded-2xl text-center">
+        <p class="text-3xl font-bold text-amber-500" id="stat-pomodoro-count">0</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">番茄钟</p>
+      </div>
     </div>
 
     <!-- 导出按钮 -->
-    <div class="flex gap-4 justify-center">
+    <div class="flex gap-4 justify-center flex-wrap">
       <button onclick="exportStats('pdf')" class="px-6 py-3 bg-primary text-white rounded-xl font-medium hover:bg-primary/90 transition-all">
         <i class="fas fa-file-pdf mr-2"></i>导出PDF报告
+      </button>
+      <button onclick="exportStats('xlsx')" class="px-6 py-3 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-all">
+        <i class="fas fa-file-excel mr-2"></i>导出Excel报告
       </button>
       <button onclick="exportStats('csv')" class="px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
         <i class="fas fa-file-csv mr-2"></i>导出CSV数据
@@ -84,24 +138,31 @@ async function renderStats() {
 
 // ========== 加载统计数据 ==========
 async function loadStats(days = '30') {
+  console.log('[loadStats] 开始加载统计数据，days:', days);
   try {
     // 修复: 更新按钮样式 — 从 setTimeout 调用时无 event 对象
     document.querySelectorAll('[onclick^="loadStats"]').forEach(btn => {
       btn.className = 'px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600';
     });
-    // 修复: 从 inline onclick 调用时有 event，从 setTimeout 调用时没有
-    if (typeof event !== 'undefined' && event && event.target) {
-      event.target.className = 'px-4 py-2 rounded-xl bg-primary text-white text-sm font-medium';
-    }
+    // 高亮当前选中的按钮 - 通过 onclick 属性判断
+    document.querySelectorAll('[onclick^="loadStats"]').forEach(btn => {
+      const match = btn.getAttribute('onclick').match(/loadStats\('(\d+)'\)/);
+      if (match && match[1] === String(days)) {
+        btn.className = 'px-4 py-2 rounded-xl bg-primary text-white text-sm font-medium';
+      }
+    });
 
-    // 并行加载所有统计数据
+    console.log('[loadStats] 正在调用 API...');
+    // 并行加载所有统计数据（添加单个 API 错误处理）
     const [taskTrend, emotionTrend, heatmap, procrastination, dashboard] = await Promise.all([
-      api.get('/api/stats/task-trend'),
-      api.get('/api/stats/emotion-trend'),
-      api.get('/api/stats/habit-heatmap'),
-      api.get('/api/stats/procrastination-pattern'),
-      api.get('/api/dashboard')
+      api.get('/api/stats/task-trend').catch(e => { console.error('[loadStats] task-trend API 失败:', e); return { trend: [] }; }),
+      api.get('/api/stats/emotion-trend').catch(e => { console.error('[loadStats] emotion-trend API 失败:', e); return { trend: [] }; }),
+      api.get('/api/stats/habit-heatmap').catch(e => { console.error('[loadStats] habit-heatmap API 失败:', e); return { heatmap: [] }; }),
+      api.get('/api/stats/procrastination-pattern').catch(e => { console.error('[loadStats] procrastination-pattern API 失败:', e); return { pattern: [] }; }),
+      api.get('/api/dashboard').catch(e => { console.error('[loadStats] dashboard API 失败:', e); return {}; })
     ]);
+    
+    console.log('[loadStats] API 调用完成，开始渲染图表...', { taskTrend, emotionTrend, heatmap, procrastination, dashboard });
 
     // 渲染图表
     renderTaskTrendChart(taskTrend.trend || []);
@@ -111,8 +172,12 @@ async function loadStats(days = '30') {
 
     // 更新统计卡片
     updateStatCards(dashboard);
-
+    
+    // 渲染新图表（使用 dashboard 数据）
+    renderExtraCharts(dashboard);
+    console.log('[loadStats] 统计数据加载完成');
   } catch (err) {
+    console.error('[loadStats] 加载统计数据失败:', err);
     showToast('加载统计数据失败: ' + err.message, 'error');
   }
 }
@@ -138,25 +203,35 @@ function renderTaskTrendChart(data) {
           data: totalData,
           borderColor: '#4F46E5',
           backgroundColor: 'rgba(79, 70, 229, 0.1)',
-          tension: 0.4
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointBackgroundColor: '#4F46E5',
+          borderWidth: 2
         },
         {
           label: '已完成',
           data: completedData,
           borderColor: '#10B981',
           backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          tension: 0.4
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointBackgroundColor: '#10B981',
+          borderWidth: 2
         }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
       plugins: {
-        legend: { display: true, position: 'top' }
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, padding: 12 } }
       },
       scales: {
-        y: { beginAtZero: true }
+        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' } },
+        x: { grid: { display: false } }
       }
     }
   });
@@ -173,22 +248,31 @@ function renderEmotionTrendChart(data) {
   const energyData = data.map(d => d.avg_energy);
 
   window.emotionTrendChartInstance = new Chart(ctx, {
-    type: 'radar',
+    type: 'line',
     data: {
       labels: labels,
       datasets: [{
         label: '平均精力',
         data: energyData,
         borderColor: '#F59E0B',
-        backgroundColor: 'rgba(245, 158, 11, 0.2)',
-        tension: 0.4
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        pointBackgroundColor: '#F59E0B',
+        borderWidth: 2
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, padding: 12 } }
+      },
       scales: {
-        r: { beginAtZero: true, max: 5 }
+        y: { beginAtZero: true, max: 5, grid: { color: 'rgba(0,0,0,0.06)' }, title: { display: true, text: '精力 (1-5)' } },
+        x: { grid: { display: false } }
       }
     }
   });
@@ -230,7 +314,7 @@ function renderProcrastinationChart(data) {
 
   if (window.procrastinationChartInstance) window.procrastinationChartInstance.destroy();
 
-  const labels = data.map(d => d.reason_type);
+  const labels = data.map(d => getEmotionLabelLocal(d.reason_type));
   const countData = data.map(d => d.count);
 
   window.procrastinationChartInstance = new Chart(ctx, {
@@ -256,150 +340,344 @@ function renderProcrastinationChart(data) {
 
 // ========== 更新统计卡片 ==========
 function updateStatCards(dashboard) {
+  // 任务统计
   if (dashboard.tasks) {
     document.getElementById('stat-total-tasks').textContent = dashboard.tasks.length || 0;
-    
     const completed = dashboard.tasks.filter(t => t.status === 'completed').length;
     const rate = dashboard.tasks.length > 0 ? Math.round((completed / dashboard.tasks.length) * 100) : 0;
     document.getElementById('stat-completion-rate').textContent = rate + '%';
   }
-
+  // 情绪统计
   if (dashboard.emotions && dashboard.emotions.length > 0) {
     const avgEnergy = dashboard.emotions.reduce((sum, e) => sum + (e.energy_level || 0), 0) / dashboard.emotions.length;
     document.getElementById('stat-avg-energy').textContent = avgEnergy.toFixed(1);
   }
-
+  // 破戒统计
   if (dashboard.commitments) {
     const relapses = dashboard.commitments.reduce((sum, c) => sum + (c.relapse_count || 0), 0);
     document.getElementById('stat-relapse-count').textContent = relapses;
+    document.getElementById('stat-commitment-count').textContent = dashboard.commitments.length || 0;
   }
+  // 日记统计
+  document.getElementById('stat-diary-count').textContent = (dashboard.diary && dashboard.diary.length) || 0;
+  // 微启动次数
+  document.getElementById('stat-micro-count').textContent = (dashboard.microStarts && dashboard.microStarts.length) || 0;
+  // 番茄钟
+  document.getElementById('stat-pomodoro-count').textContent = (dashboard.pomodoro && dashboard.pomodoro.length) || 0;
+}
+
+// ========== 渲染额外图表 ==========
+function renderExtraCharts(dashboard) {
+  // 日记趋势（按日期分组）
+  const diaryData = dashboard.diary || [];
+  const diaryTrend = [];
+  const diaryMap = {};
+  diaryData.forEach(d => {
+    const date = (d.created_at || '').split('T')[0];
+    if (date) { diaryMap[date] = (diaryMap[date] || 0) + 1; }
+  });
+  Object.entries(diaryMap).sort((a, b) => a[0].localeCompare(b[0])).forEach(([date, count]) => {
+    diaryTrend.push({ date, count });
+  });
+  renderDiaryTrendChart(diaryTrend);
+
+  // 微启动数据
+  const microData = dashboard.microStarts || [];
+  const microMap = {};
+  microData.forEach(d => {
+    const date = (d.created_at || '').split('T')[0];
+    if (date) { microMap[date] = (microMap[date] || 0) + 1; }
+  });
+  const microTrend = Object.entries(microMap).sort((a, b) => a[0].localeCompare(b[0])).map(([date, count]) => ({ date, count }));
+  renderMicroStartChart(microTrend);
+
+  // 番茄钟数据
+  renderPomodoroChart(dashboard.pomodoro || []);
+}
+
+// ========== 日记趋势图 ==========
+function renderDiaryTrendChart(data) {
+  const ctx = document.getElementById('diaryTrendChart');
+  if (!ctx) return;
+  if (window.diaryTrendChartInstance) window.diaryTrendChartInstance.destroy();
+  const labels = data.map(d => d.date);
+  const counts = data.map(d => d.count);
+  if (!labels.length) { ctx.parentElement.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">暂无日记数据</div>'; return; }
+  window.diaryTrendChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{ label: '日记数', data: counts, borderColor: '#6366F1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' } }, x: { grid: { display: false } } } }
+  });
+}
+
+// ========== 微启动统计图 ==========
+function renderMicroStartChart(data) {
+  const ctx = document.getElementById('microStartChart');
+  if (!ctx) return;
+  if (window.microStartChartInstance) window.microStartChartInstance.destroy();
+  if (!data || !data.length) { ctx.parentElement.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">暂无微启动数据</div>'; return; }
+  const labels = data.map(d => d.date || d);
+  const counts = data.map(d => d.count || 1);
+  window.microStartChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: '启动次数', data: counts, backgroundColor: '#06B6D4', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' } }, x: { grid: { display: false } } } }
+  });
+}
+
+// ========== 番茄钟统计图 ==========
+function renderPomodoroChart(data) {
+  const ctx = document.getElementById('pomodoroChart');
+  if (!ctx) return;
+  if (window.pomodoroChartInstance) window.pomodoroChartInstance.destroy();
+  if (!data || !data.length) { ctx.parentElement.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">暂无番茄钟数据</div>'; return; }
+  const completed = data.filter(d => d.completed).length;
+  const incomplete = data.length - completed;
+  window.pomodoroChartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: ['已完成', '未完成'], datasets: [{ data: [completed, incomplete], backgroundColor: ['#10B981', '#F59E0B'] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
 }
 
 // ========== 导出功能 ==========
 async function exportStats(format) {
   if (format === 'pdf') {
-    // 生成PDF报告
     await generatePDFReport();
+  } else if (format === 'xlsx') {
+    await exportStatsToExcel();
   } else if (format === 'csv') {
-    // 导出CSV数据
     await exportCSVData();
+  } else {
+    showToast('不支持的导出格式', 'error');
   }
 }
 
-// ========== 生成PDF报告 ==========
+// ========== 生成PDF报告（中文支持） ==========
 async function generatePDFReport() {
-  showToast('正在生成PDF报告...', 'info');
+  showToast('正在生成 PDF 报告...', 'info');
   
   try {
-    // 加载jsPDF库
+    // 加载 html2canvas + jsPDF
+    if (!window.html2canvas) {
+      await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+    }
     if (!window.jspdf) {
       await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
     }
     
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF('p', 'mm', 'a4');
     
-    // 标题
-    doc.setFontSize(20);
-    doc.text('ZhouJi - Weekly Report', 20, 20);
+    // 获取统计数据
+    const dashboard = await api.get('/api/dashboard').catch(() => ({}));
     
-    // 日期
-    doc.setFontSize(12);
-    doc.text(`Generated: ${new Date().toLocaleDateString('zh-CN')}`, 20, 30);
+    // 创建临时 HTML 内容（中文直接渲染）
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'padding:30px; background:white; font-family: "Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif; width:375px;';
     
-    // 加载统计数据
-    const dashboard = await api.get('/api/dashboard');
-    
-    let yPos = 50;
+    let html = '<div style="text-align:center;margin-bottom:20px;">';
+    html += '<h1 style="color:#6366F1;font-size:24px;margin:0;">周迹 - 数据报告</h1>';
+    html += `<p style="color:#999;font-size:12px;margin-top:5px;">生成日期: ${new Date().toLocaleDateString('zh-CN')}</p>`;
+    html += '</div>';
     
     // 任务统计
-    doc.setFontSize(16);
-    doc.text('Task Statistics', 20, yPos);
-    yPos += 10;
-    
-    doc.setFontSize(12);
-    const totalTasks = dashboard.tasks ? dashboard.tasks.length : 0;
-    const completedTasks = dashboard.tasks ? dashboard.tasks.filter(t => t.status === 'completed').length : 0;
-    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-    
-    doc.text(`Total Tasks: ${totalTasks}`, 30, yPos);
-    yPos += 7;
-    doc.text(`Completed: ${completedTasks}`, 30, yPos);
-    yPos += 7;
-    doc.text(`Completion Rate: ${completionRate}%`, 30, yPos);
-    yPos += 15;
+    if (dashboard.tasks) {
+      const total = dashboard.tasks.length;
+      const completed = dashboard.tasks.filter(t => t.status === 'completed').length;
+      const rate = total > 0 ? Math.round(completed / total * 100) : 0;
+      html += '<div style="margin:15px 0;padding:12px;background:#f5f3ff;border-radius:8px;">';
+      html += '<h3 style="color:#333;font-size:16px;margin:0 0 8px 0;">📋 任务统计</h3>';
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">总任务数: ${total}</p>`;
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">已完成: ${completed}</p>`;
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">完成率: ${rate}%</p>`;
+      html += '</div>';
+    }
     
     // 情绪统计
-    doc.setFontSize(16);
-    doc.text('Emotion Statistics', 20, yPos);
-    yPos += 10;
-    
-    doc.setFontSize(12);
-    const totalEmotions = dashboard.emotions ? dashboard.emotions.length : 0;
-    const avgEnergy = totalEmotions > 0 
-      ? (dashboard.emotions.reduce((sum, e) => sum + (e.energy_level || 0), 0) / totalEmotions).toFixed(1)
-      : 0;
-    
-    doc.text(`Total Records: ${totalEmotions}`, 30, yPos);
-    yPos += 7;
-    doc.text(`Average Energy: ${avgEnergy}/5`, 30, yPos);
-    yPos += 15;
+    if (dashboard.emotions) {
+      const totalEmotions = dashboard.emotions.length;
+      const avgEnergy = totalEmotions > 0 ? (dashboard.emotions.reduce((s, e) => s + (e.energy_level || 0), 0) / totalEmotions).toFixed(1) : 0;
+      html += '<div style="margin:15px 0;padding:12px;background:#fef3c7;border-radius:8px;">';
+      html += '<h3 style="color:#333;font-size:16px;margin:0 0 8px 0;">😊 情绪统计</h3>';
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">记录总数: ${totalEmotions}</p>`;
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">平均精力: ${avgEnergy}/5</p>`;
+      html += '</div>';
+    }
     
     // 承诺统计
-    doc.setFontSize(16);
-    doc.text('Commitment Statistics', 20, yPos);
-    yPos += 10;
+    if (dashboard.commitments) {
+      const totalCommitments = dashboard.commitments.length;
+      const totalRelapses = dashboard.commitments.reduce((s, c) => s + (c.relapse_count || 0), 0) || 0;
+      html += '<div style="margin:15px 0;padding:12px;background:#ecfdf5;border-radius:8px;">';
+      html += '<h3 style="color:#333;font-size:16px;margin:0 0 8px 0;">🎯 承诺统计</h3>';
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">承诺总数: ${totalCommitments}</p>`;
+      html += `<p style="color:#555;font-size:13px;margin:3px 0;">破戒次数: ${totalRelapses}</p>`;
+      html += '</div>';
+    }
     
-    doc.setFontSize(12);
-    const totalCommitments = dashboard.commitments ? dashboard.commitments.length : 0;
-    const totalRelapses = dashboard.commitments 
-      ? dashboard.commitments.reduce((sum, c) => sum + (c.relapse_count || 0), 0)
-      : 0;
+    tempDiv.innerHTML = html;
+    document.body.appendChild(tempDiv);
     
-    doc.text(`Total Commitments: ${totalCommitments}`, 30, yPos);
-    yPos += 7;
-    doc.text(`Total Relapses: ${totalRelapses}`, 30, yPos);
-    yPos += 15;
+    // 截图（中文通过浏览器渲染，完美支持）
+    const canvas = await html2canvas(tempDiv, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      logging: false,
+      useCORS: true
+    });
+    document.body.removeChild(tempDiv);
     
-    // 保存PDF
-    doc.save(`zhouji-report-${new Date().toISOString().slice(0, 10)}.pdf`);
-    showToast('PDF报告已生成', 'success');
+    const imgData = canvas.toDataURL('image/png');
+    const imgWidth = 190;
+    const imgHeight = (canvas.height / canvas.width) * imgWidth;
+    
+    doc.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+    doc.save(`周迹数据报告_${new Date().toISOString().split('T')[0]}.pdf`);
+    showToast('PDF 报告已生成！', 'success');
     
   } catch (err) {
-    showToast('PDF生成失败: ' + err.message, 'error');
+    console.error('PDF 生成失败:', err);
+    showToast('PDF 生成失败: ' + (err.message || err), 'error');
   }
 }
 
-// ========== 导出CSV数据 ==========
+// ========== 导出 Excel 报告（多 Sheet 中文）==========
+async function exportStatsToExcel() {
+  showToast('正在生成 Excel 报告...', 'info');
+  try {
+    // 加载 SheetJS
+    if (!window.XLSX) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: 任务统计
+    const taskTrend = await api.get('/api/stats/task-trend').catch(() => ({ trend: [] }));
+    if (taskTrend.trend && taskTrend.trend.length) {
+      const wsData = [['日期', '总任务', '已完成', '完成率']];
+      taskTrend.trend.forEach(d => {
+        const rate = d.total > 0 ? Math.round((d.completed || 0) / d.total * 100) + '%' : '0%';
+        wsData.push([d.date, d.total || 0, d.completed || 0, rate]);
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), '任务统计');
+    }
+
+    // Sheet 2: 情绪统计
+    const emotionTrend = await api.get('/api/stats/emotion-trend').catch(() => ({ trend: [] }));
+    if (emotionTrend.trend && emotionTrend.trend.length) {
+      const wsData = [['日期', '平均精力', '记录数']];
+      emotionTrend.trend.forEach(d => {
+        wsData.push([d.date, d.avg_energy || 0, d.count || 0]);
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), '情绪统计');
+    }
+
+    // Sheet 3: 全部数据导出（中文列名）
+    const exportData = await api.get('/api/export').catch(() => ({ data: {} }));
+    const zhMap = { 
+      id: 'ID', title: '标题', content: '内容', status: '状态', 
+      created_at: '创建时间', updated_at: '更新时间', user_id: '用户ID',
+      mood: '心情', weather: '天气', energy_level: '精力', note: '备注',
+      category: '分类', priority: '优先级', due_date: '截止日期', completed_at: '完成时间',
+      description: '描述', difficulty: '难度', task_id: '任务ID', step_id: '步骤ID',
+      duration: '时长', planned_duration: '计划时长', actual_duration: '实际时长',
+      reason_type: '原因类型', relapse_count: '破戒次数', completed: '是否完成',
+      emotion_type: '情绪类型', trigger_task: '触发任务', order_index: '排序',
+      continued_after_contract: '超时继续', file_url: '文件链接', file_name: '文件名',
+      start_time: '开始时间', end_time: '结束时间', block_date: '日期',
+      stat_date: '统计日期', tasks_created: '创建任务', tasks_completed: '完成任务',
+      micro_starts_count: '启动次数', procrastination_count: '拖延次数', pomodoro_count: '番茄次数',
+      username: '用户名', email: '邮箱', is_system: '系统模板', use_count: '使用次数',
+      template_type: '模板类型', template_name: '模板名', fields: '字段',
+      day_of_week: '星期', week_start: '周起始', source: '来源', sync_token: '同步标记'
+    };
+    const sheetNameMap = { 
+      tasks: '任务', diary: '日记', emotions: '情绪记录', commitments: '承诺',
+      taskSteps: '步骤', microStarts: '启动记录', procrastination: '拖延日志',
+      timeBlocks: '时间块', dailyStats: '日报统计', pomodoro: '番茄钟',
+      weeklyPlans: '周计划'
+    };
+    
+    if (exportData.data) {
+      for (const [tableName, rows] of Object.entries(exportData.data)) {
+        if (!rows || !rows.length) continue;
+        const headers = Object.keys(rows[0]);
+        const wsData = [headers.map(h => zhMap[h] || h)];
+        rows.forEach(row => {
+          wsData.push(headers.map(h => {
+            const val = row[h];
+            if (val === null || val === undefined) return '';
+            return val;
+          }));
+        });
+        const sn = sheetNameMap[tableName] || tableName;
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), sn.slice(0, 31));
+      }
+    }
+
+    if (!wb.SheetNames.length) {
+      showToast('暂无数据可导出', 'warning');
+      return;
+    }
+
+    XLSX.writeFile(wb, '周迹数据报告_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    showToast('Excel 报告导出成功！', 'success');
+  } catch (err) {
+    console.error('Excel 导出失败:', err);
+    showToast('导出失败：' + (err.message || err), 'error');
+  }
+}
+
+// ========== 导出CSV数据（中文 + 多表） ==========
 async function exportCSVData() {
   try {
     const data = await api.get('/api/export');
+    const tableNames = {
+      tasks: { name: '任务', headers: ['ID', '标题', '描述', '分类', '难度', '状态', '截止日期', '创建时间'] },
+      diary: { name: '日记', headers: ['ID', '标题', '内容', '心情', '天气', '创建时间'] },
+      taskSteps: { name: '步骤', headers: ['ID', '任务ID', '标题', '时长', '状态'] },
+      emotions: { name: '情绪记录', headers: ['ID', '情绪类型', '精力值', '触发任务', '创建时间'] },
+      microStarts: { name: '启动记录', headers: ['ID', '任务ID', '步骤ID', '计划时长', '实际时长'] },
+      commitments: { name: '承诺', headers: ['ID', '内容', '破戒次数', '创建时间'] },
+      procrastination: { name: '拖延日志', headers: ['ID', '原因类型', '创建时间'] },
+      pomodoro: { name: '番茄钟', headers: ['ID', '是否完成', '创建时间'] },
+      weeklyPlans: { name: '周计划', headers: ['ID', '标题', '星期', '开始时间', '结束时间', '状态', '创建时间'] }
+    };
+    
     let csv = '\ufeff'; // BOM for Chinese encoding
     
-    for (const [tableName, rows] of Object.entries(data.data)) {
+    for (const [tableKey, rows] of Object.entries(data.data)) {
       if (!rows || rows.length === 0) continue;
       
-      csv += `\n=== ${tableName} ===\n`;
-      const headers = Object.keys(rows[0]);
-      csv += headers.join(',') + '\n';
+      const tableInfo = tableNames[tableKey] || { name: tableKey, headers: Object.keys(rows[0]) };
+      csv += `\n=== ${tableInfo.name} ===\n`;
+      csv += tableInfo.headers.join(',') + '\n';
       
       rows.forEach(row => {
-        const values = headers.map(h => {
-          let val = row[h];
-          if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
+        const values = tableInfo.headers.map(h => {
+          let val = row[h] ?? '';
+          if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
             val = '"' + val.replace(/"/g, '""') + '"';
           }
-          return val || '';
+          return val;
         });
         csv += values.join(',') + '\n';
       });
     }
     
-    downloadFile(csv, `zhouji-export-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
-    showToast('CSV数据已导出', 'success');
+    downloadFile(csv, `周迹数据_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv;charset=utf-8');
+    showToast('CSV 数据已导出！', 'success');
     
   } catch (err) {
-    showToast('导出失败: ' + err.message, 'error');
+    showToast('导出失败: ' + (err.message || err), 'error');
   }
 }
 
@@ -431,3 +709,5 @@ function downloadFile(content, filename, contentType) {
 window.renderStats = renderStats;
 window.loadStats = loadStats;
 window.exportStats = exportStats;
+window.exportStatsToExcel = exportStatsToExcel;
+window.exportCSVData = exportCSVData;

@@ -1,18 +1,42 @@
 # Dependencies
 node_modules/
+frontend/node_modules/
 
-# Cloudflare
+# Wrangler/Cloudflare
 .wrangler/
-.dev.vars
+*.log
+debug.log
+
+# Test files
+test-api.js
+test-runner.html
+test.sh
+e2e-*.mjs
+e2e-*.js
+e2e.spec.cjs
+backend/seed_e2e_data.sql
+
+# Reports
+frontend/E2E_REPORT.md
+frontend/TEST_REPORT.md
+frontend/WEEKLY_FIX_REPORT.md
+
+# Screenshots
+frontend/screenshots*/
+frontend/screenshots-weekly*/
+frontend/screenshots-e2e*/
+
+# Backups
+frontend/*.bak
+
+# Audio assets
+frontend/audio/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-
 # Environment
 .env
 .env.local
+.env.production

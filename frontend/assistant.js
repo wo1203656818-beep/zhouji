@@ -1,4 +1,4 @@
-// ==================== 辅助工具页面 ====================
+﻿// ==================== 辅助工具页面 ====================
 
 // ========== 渲染辅助工具页面 ==========
 async function renderAssistant() {
@@ -63,6 +63,15 @@ async function renderAssistant() {
               ⏹️ 停止
             </button>
           </div>
+          </div>
+          
+          <!-- 隐藏音频元素 -->
+          <audio id="wn-audio-rain" loop preload="auto" src="audio/rain.mp3" style="display:none"></audio>
+          <audio id="wn-audio-forest" loop preload="auto" src="audio/forest.mp3" style="display:none"></audio>
+          <audio id="wn-audio-wave" loop preload="auto" src="audio/wave.mp3" style="display:none"></audio>
+          <audio id="wn-audio-cafe" loop preload="auto" src="audio/cafe.mp3" style="display:none"></audio>
+          <audio id="wn-audio-fire" loop preload="auto" src="audio/fire.mp3" style="display:none"></audio>
+          <audio id="wn-audio-fan" loop preload="auto" src="audio/fan.mp3" style="display:none"></audio>
         </div>
       </div>
 
@@ -103,27 +112,46 @@ async function renderAssistant() {
         </div>
       </div>
 
-      <!-- 专注音乐推荐 -->
+      <!-- 专注音乐推荐（网易云音乐搜索） -->
       <div class="glass p-6 rounded-2xl md:col-span-2">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🎶 专注音乐推荐</h3>
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🎶 专注音乐（网易云音乐）</h3>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <a href="https://www.youtube.com/results?search_query=focus+music" target="_blank" 
-             class="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 transition-all cursor-pointer">
-            <h4 class="font-medium text-gray-700 dark:text-gray-300 mb-1">📺 YouTube</h4>
-            <p class="text-sm text-gray-600 dark:text-gray-400">专注音乐播放列表</p>
-          </a>
-          <a href="https://open.spotify.com/search/focus%20music" target="_blank" 
-             class="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/30 transition-all cursor-pointer">
-            <h4 class="font-medium text-gray-700 dark:text-gray-300 mb-1">🎵 Spotify</h4>
-            <p class="text-sm text-gray-600 dark:text-gray-400">专注 playlist</p>
-          </a>
-          <a href="https://music.apple.com/search?term=focus" target="_blank" 
-             class="p-4 bg-gray-50 dark:bg-gray-900/20 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-900/30 transition-all cursor-pointer">
-            <h4 class="font-medium text-gray-700 dark:text-gray-300 mb-1">🍎 Apple Music</h4>
-            <p class="text-sm text-gray-600 dark:text-gray-400">专注音乐</p>
-          </a>
+        <!-- 搜索栏 -->
+        <div class="flex gap-2 mb-4">
+          <input type="text" id="music-search-input" placeholder="搜索歌曲（如：轻音乐、安静、专注）..." 
+                 class="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm focus:border-primary outline-none transition-all"
+                 onkeypress="if(event.key==='Enter') searchMusic()">
+          <button onclick="searchMusic()" class="px-6 py-3 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-all touch-btn">
+            <i class="fas fa-search mr-1"></i>搜索
+          </button>
         </div>
+
+        <!-- 播放器 -->
+        <div id="music-player" class="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600" style="display:none">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-r from-red-400 to-blue-500 flex items-center justify-center text-white">
+              <i class="fas fa-music"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p id="music-player-title" class="text-sm font-medium text-gray-800 dark:text-white truncate">未选择音乐</p>
+              <p id="music-player-status" class="text-xs text-gray-500 dark:text-gray-400">搜索并选择歌曲播放</p>
+            </div>
+            <button onclick="closeMusicPlayer()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div id="music-player-container" style="display:none">
+            <iframe id="music-iframe" class="w-full h-20 rounded-lg" frameborder="0" allow="autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+          </div>
+        </div>
+
+        <!-- 搜索结果 -->
+        <div id="music-search-results" class="space-y-2 max-h-96 overflow-y-auto"></div>
+        
+        <!-- 推荐提示 -->
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-3">
+          <i class="fas fa-info-circle mr-1"></i>搜索网易云音乐歌曲，点击即可播放。建议搜索"轻音乐""白噪音""专注"等关键词
+        </p>
       </div>
     </div>
   `;
@@ -131,205 +159,61 @@ async function renderAssistant() {
   return div;
 }
 
-// ========== 白噪音功能（使用 Web Audio API 合成，无需外部文件）==========
-let whiteNoiseAudioCtx = null;
-let whiteNoiseSource = null;
-let whiteNoiseGain = null;
-let whiteNoiseIsPlaying = false;
+// ========== 白噪音功能（使用本地高质量音频文件）==========
 let whiteNoiseCurrentType = 'rain';
-let whiteNoiseBiquadFilter = null;
-
-// 修复: 使用 Web Audio API 合成白噪音，不依赖外部 CDN 音频文件
-// Mixkit CDN 已返回 403 Forbidden，因此改为纯合成方案
-
-function getAudioContext() {
-  if (!whiteNoiseAudioCtx) {
-    whiteNoiseAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  // 修复: AudioContext 可能被浏览器自动暂停（autoplay policy）
-  if (whiteNoiseAudioCtx.state === 'suspended') {
-    whiteNoiseAudioCtx.resume();
-  }
-  return whiteNoiseAudioCtx;
-}
-
-function createNoiseBuffer(ctx, type) {
-  const bufferSize = ctx.sampleRate * 4; // 4秒缓冲
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < bufferSize; i++) {
-    let sample;
-    switch (type) {
-      case 'white':
-        // 白噪音: 均匀分布随机
-        sample = Math.random() * 2 - 1;
-        break;
-      case 'pink':
-        // 粉红噪音: 低频更丰富
-        // 使用 Paul Kellet 的算法
-        sample = pinkNoiseSample();
-        break;
-      case 'brown':
-        // 布朗噪音: 低频为主
-        sample = brownNoiseSample(i, bufferSize);
-        break;
-      default:
-        sample = Math.random() * 2 - 1;
-    }
-    data[i] = sample;
-  }
-  return buffer;
-}
-
-// 粉红噪音状态
-let pinkNoiseState = { b0: 0, b1: 0, b2: 0, b3: 0, b4: 0, b5: 0, b6: 0 };
-function pinkNoiseSample() {
-  const white = Math.random() * 2 - 1;
-  pinkNoiseState.b0 = 0.99886 * pinkNoiseState.b0 + white * 0.0555179;
-  pinkNoiseState.b1 = 0.99332 * pinkNoiseState.b1 + white * 0.0750759;
-  pinkNoiseState.b2 = 0.96900 * pinkNoiseState.b2 + white * 0.1538520;
-  pinkNoiseState.b3 = 0.86650 * pinkNoiseState.b3 + white * 0.3104856;
-  pinkNoiseState.b4 = 0.55000 * pinkNoiseState.b4 + white * 0.5329522;
-  pinkNoiseState.b5 = -0.7616 * pinkNoiseState.b5 - white * 0.0168980;
-  const pink = pinkNoiseState.b0 + pinkNoiseState.b1 + pinkNoiseState.b2 + pinkNoiseState.b3 + pinkNoiseState.b4 + pinkNoiseState.b5 + pinkNoiseState.b6 + white * 0.5362;
-  pinkNoiseState.b6 = white * 0.115926;
-  return pink * 0.11;
-}
-
-function brownNoiseSample(i, len) {
-  // 布朗噪音: 低频为主，用累积和实现
-  return (Math.random() - 0.5) * 0.02;
-}
-
-function getNoiseParamsForType(type) {
-  // 每种声音类型对应的: { 噪音基底, 低频增益, 高频衰减, 调制频率 }
-  const params = {
-    rain:     { base: 'pink',  lowpass: 4000,  highpass: 100,  modulate: 0.3 },
-    forest:   { base: 'pink',  lowpass: 6000,  highpass: 200,  modulate: 0.5 },
-    wave:     { base: 'brown', lowpass: 800,   highpass: 50,   modulate: 0.8 },
-    cafe:     { base: 'pink',  lowpass: 5000,  highpass: 300,  modulate: 0.2 },
-    fire:     { base: 'brown', lowpass: 1500,  highpass: 80,   modulate: 0.6 },
-    fan:      { base: 'white', lowpass: 3000,  highpass: 500,  modulate: 0 },
-  };
-  return params[type] || params.rain;
-}
+let whiteNoiseIsPlaying = false;
 
 function playWhiteNoise(type) {
-  try {
-    const ctx = getAudioContext();
-    
-    // 停止之前的播放
-    stopWhiteNoiseInternal();
-    
-    whiteNoiseCurrentType = type;
-    const params = getNoiseParamsForType(type);
-    
-    // 创建噪音缓冲
-    const buffer = createNoiseBuffer(ctx, params.base);
-    whiteNoiseSource = ctx.createBufferSource();
-    whiteNoiseSource.buffer = buffer;
-    whiteNoiseSource.loop = true;
-    
-    // 创建滤波器
-    const lowpass = ctx.createBiquadFilter();
-    lowpass.type = 'lowpass';
-    lowpass.frequency.value = params.lowpass;
-    
-    const highpass = ctx.createBiquadFilter();
-    highpass.type = 'highpass';
-    highpass.frequency.value = params.highpass;
-    
-    // 音量控制
-    whiteNoiseGain = ctx.createGain();
-    const volSlider = document.getElementById('whiteNoiseVolume');
-    whiteNoiseGain.gain.value = (volSlider ? parseInt(volSlider.value) : 50) / 100;
-    
-    // 连接节点: source -> lowpass -> highpass -> gain -> output
-    whiteNoiseSource.connect(lowpass);
-    lowpass.connect(highpass);
-    highpass.connect(whiteNoiseGain);
-    whiteNoiseGain.connect(ctx.destination);
-    
-    // 调制效果（对特定音效添加低频调制，模拟自然变化）
-    if (params.modulate > 0 && type === 'wave') {
-      // 海浪: 使用 LFO 调制音量模拟波浪起伏
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.frequency.value = 0.1; // 每10秒一个周期
-      lfoGain.gain.value = 0.3;
-      lfo.connect(lfoGain);
-      lfoGain.connect(whiteNoiseGain.gain);
-      lfo.start();
-      whiteNoiseLFO = lfo;
-    }
-    
-    whiteNoiseSource.start();
+  ['rain','forest','wave','cafe','fire','fan'].forEach(t => {
+    var a = document.getElementById('wn-audio-' + t);
+    if (a) { a.pause(); a.currentTime = 0; }
+  });
+  whiteNoiseCurrentType = type;
+  var audio = document.getElementById('wn-audio-' + type);
+  if (!audio) return;
+  audio.play().then(() => {
     whiteNoiseIsPlaying = true;
-    
-    document.getElementById('whiteNoiseToggle').innerHTML = '⏸️ 暂停';
-    showToast(`正在播放: ${type}`, 'success');
-  } catch (err) {
-    console.error('白噪音播放失败:', err);
-    showToast('音频播放失败: ' + err.message + '。请检查浏览器音频权限。', 'error');
-  }
-}
-
-let whiteNoiseLFO = null;
-
-function stopWhiteNoiseInternal() {
-  try {
-    if (whiteNoiseLFO) {
-      whiteNoiseLFO.stop();
-      whiteNoiseLFO = null;
-    }
-    if (whiteNoiseSource) {
-      whiteNoiseSource.stop();
-      whiteNoiseSource.disconnect();
-      whiteNoiseSource = null;
-    }
-    if (whiteNoiseGain) {
-      whiteNoiseGain.disconnect();
-      whiteNoiseGain = null;
-    }
-  } catch (e) {
-    // 忽略停止时的错误（可能已断开）
-  }
-  whiteNoiseIsPlaying = false;
+    updateWhiteNoiseUI(true);
+  }).catch(err => {
+    console.error('播放失败:', err);
+    showToast('播放失败，请点击页面后重试', 'error');
+  });
 }
 
 function toggleWhiteNoise() {
-  try {
-    if (!whiteNoiseIsPlaying) {
-      playWhiteNoise(whiteNoiseCurrentType);
-    } else {
-      // 暂停: 断开音频源但保留 AudioContext
-      if (whiteNoiseAudioCtx && whiteNoiseAudioCtx.state === 'running') {
-        whiteNoiseAudioCtx.suspend();
-      }
-      whiteNoiseIsPlaying = false;
-      document.getElementById('whiteNoiseToggle').innerHTML = '▶️ 播放';
-    }
-  } catch (err) {
-    console.error('切换播放状态失败:', err);
-    showToast('操作失败: ' + err.message, 'error');
-  }
+  var audio = document.getElementById('wn-audio-' + whiteNoiseCurrentType);
+  if (!audio) return;
+  if (whiteNoiseIsPlaying) { audio.pause(); whiteNoiseIsPlaying = false; }
+  else { audio.play().then(() => { whiteNoiseIsPlaying = true; }).catch(err => console.error(err)); }
+  updateWhiteNoiseUI(whiteNoiseIsPlaying);
 }
 
 function stopWhiteNoise() {
-  stopWhiteNoiseInternal();
-  if (whiteNoiseAudioCtx) {
-    whiteNoiseAudioCtx.close();
-    whiteNoiseAudioCtx = null;
-  }
-  document.getElementById('whiteNoiseToggle').innerHTML = '▶️ 播放';
+  ['rain','forest','wave','cafe','fire','fan'].forEach(t => {
+    var a = document.getElementById('wn-audio-' + t);
+    if (a) { a.pause(); a.currentTime = 0; }
+  });
+  whiteNoiseIsPlaying = false;
+  updateWhiteNoiseUI(false);
 }
 
 function adjustWhiteNoiseVolume(value) {
-  if (whiteNoiseGain) {
-    whiteNoiseGain.gain.value = value / 100;
-  }
+  var vol = parseInt(value) / 100;
+  ['rain','forest','wave','cafe','fire','fan'].forEach(t => {
+    var a = document.getElementById('wn-audio-' + t);
+    if (a) a.volume = vol;
+  });
 }
+
+function updateWhiteNoiseUI(playing) {
+  var btn = document.getElementById('whiteNoiseToggle');
+  if (!btn) return;
+  btn.innerHTML = playing ? '⏸️ 暂停' : '▶️ 播放';
+  btn.className = 'flex-1 py-2 rounded-xl text-sm font-medium transition-all ' + (playing ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-primary text-white');
+}
+
+window.addEventListener('beforeunload', stopWhiteNoise);
+document.addEventListener('visibilitychange', function() { if (document.hidden) stopWhiteNoise(); });
 
 // ========== 休息提醒功能 ==========
 let reminderIntervals = {};
@@ -437,6 +321,97 @@ function startWaterReminder() {
 
 // 暴露函数到全局
 window.renderAssistant = renderAssistant;
+window.playWhiteNoise = playWhiteNoise;
+window.toggleWhiteNoise = toggleWhiteNoise;
+window.stopWhiteNoise = stopWhiteNoise;
+window.adjustWhiteNoiseVolume = adjustWhiteNoiseVolume;
+window.start20Rule = start20Rule;
+window.startPomodoroReminder = startPomodoroReminder;
+window.startWaterReminder = startWaterReminder;
+
+// ========== 网易云音乐搜索播放器 ==========
+// 搜索音乐
+window.searchMusic = async function() {
+  const keyword = document.getElementById('music-search-input')?.value?.trim();
+  if (!keyword) {
+    showToast('请输入搜索关键词', 'warning');
+    return;
+  }
+  
+  showToast('正在搜索...', 'info');
+  
+  try {
+    const resp = await api.get(`/api/music/search?keyword=${encodeURIComponent(keyword)}`);
+    
+    if (!resp.songs || resp.songs.length === 0) {
+      document.getElementById('music-search-results').innerHTML = `
+        <div class="text-center py-8 text-gray-400">
+          <i class="fas fa-music text-4xl mb-2"></i>
+          <p>未找到相关歌曲，请尝试其他关键词</p>
+        </div>
+      `;
+      showToast('未找到相关歌曲', 'info');
+      return;
+    }
+    
+    // 渲染搜索结果
+    document.getElementById('music-search-results').innerHTML = resp.songs.map(song => `
+      <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 hover:border-primary/50 cursor-pointer transition-all"
+           onclick="playSong('${song.id}', '${song.name.replace(/'/g, "\\'")}', '${song.artists.replace(/'/g, "\\'")}', '${song.embedUrl.replace(/'/g, "\\'")}')">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+            <i class="fas fa-play"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 dark:text-white truncate">${song.name}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 truncate">${song.artists} · ${song.album}</p>
+          </div>
+          <div class="text-xs text-gray-400">${Math.floor(song.duration/1000/60)}:${String(Math.floor(song.duration/1000%60)).padStart(2,'0')}</div>
+        </div>
+      </div>
+    `).join('');
+    
+    showToast(`找到 ${resp.songs.length} 首歌曲`, 'success');
+  } catch (err) {
+    console.error('搜索音乐失败:', err);
+    document.getElementById('music-search-results').innerHTML = `
+      <div class="text-center py-8 text-gray-400">
+        <i class="fas fa-exclamation-circle text-4xl mb-2"></i>
+        <p>搜索失败: ${err.message}</p>
+      </div>
+    `;
+    showToast('搜索失败', 'error');
+  }
+};
+
+// 播放歌曲
+window.playSong = function(id, name, artists, embedUrl) {
+  const player = document.getElementById('music-player');
+  const container = document.getElementById('music-player-container');
+  const iframe = document.getElementById('music-iframe');
+  
+  player.style.display = 'block';
+  container.style.display = 'block';
+  iframe.src = embedUrl;
+  
+  document.getElementById('music-player-title').textContent = `${name} - ${artists}`;
+  document.getElementById('music-player-status').textContent = '正在播放...';
+  
+  // 滚动到播放器
+  player.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+// 关闭播放器
+window.closeMusicPlayer = function() {
+  const player = document.getElementById('music-player');
+  const container = document.getElementById('music-player-container');
+  const iframe = document.getElementById('music-iframe');
+  
+  iframe.src = '';
+  container.style.display = 'none';
+  player.style.display = 'none';
+};
+
 // 修复: 暴露清理函数，在离开页面时由 app.js 的 initPageInteractions 调用
 window.cleanupReminders = function() {
   Object.keys(reminderIntervals).forEach(function(key) {

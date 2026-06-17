@@ -7,6 +7,35 @@ let diaryMediaFiles = [];
 let cbtTemplates = []; // 缓存CBT模板列表
 let currentTemplateFields = []; // 当前模板的字段
 
+// ========== 心情/天气映射 ==========
+function getMoodLabel(mood) {
+  const map = {
+    'neutral': '😐 平静',
+    'happy': '😊 开心',
+    'excited': '🎉 兴奋',
+    'calm': '😌 放松',
+    'anxious': '😰 焦虑',
+    'sad': '😢 难过',
+    'angry': '😠 生气',
+    'tired': '😴 疲惫'
+  };
+  return map[mood] || mood || '';
+}
+
+function getWeatherLabel(weather) {
+  const map = {
+    'sunny': '☀️ 晴天',
+    'cloudy': '☁️ 多云',
+    'overcast': '🌥️ 阴天',
+    'rainy': '🌧️ 雨天',
+    'snowy': '❄️ 雪天',
+    'foggy': '🌫️ 雾天',
+    'windy': '💨 大风',
+    'stormy': '⛈️ 暴雨'
+  };
+  return map[weather] || weather || '';
+}
+
 // ========== 日记列表页 ==========
 async function renderDiary() {
   const div = el('div', 'p-4 md:p-8 max-w-4xl mx-auto fade-in');
@@ -79,7 +108,13 @@ async function loadDiaryEntries() {
         ${entry.mood ? `
           <div class="flex items-center gap-2 mb-3">
             <span class="text-sm text-gray-500 dark:text-gray-400">心情:</span>
-            <span class="px-2 py-1 rounded-full text-xs bg-primary/10 text-primary">${entry.mood}</span>
+            <span class="px-2 py-1 rounded-full text-xs bg-primary/10 text-primary">${getMoodLabel(entry.mood)}</span>
+          </div>
+        ` : ''}
+        ${entry.weather ? `
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-sm text-gray-500 dark:text-gray-400">天气:</span>
+            <span class="px-2 py-1 rounded-full text-xs bg-blue-100/50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">${getWeatherLabel(entry.weather)}</span>
           </div>
         ` : ''}
         ${entry.media && entry.media.length > 0 ? `
@@ -119,13 +154,13 @@ async function viewDiaryEntry(id) {
         <div class="mb-4">
           <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
             <span><i class="fas fa-calendar mr-1"></i>${new Date(currentDiaryEntry.created_at).toLocaleString('zh-CN')}</span>
-            ${currentDiaryEntry.mood ? `<span><i class="fas fa-smile mr-1"></i>${currentDiaryEntry.mood}</span>` : ''}
-            ${currentDiaryEntry.weather ? `<span><i class="fas fa-cloud mr-1"></i>${currentDiaryEntry.weather}</span>` : ''}
+            ${currentDiaryEntry.mood ? `<span><i class="fas fa-smile mr-1"></i>${getMoodLabel(currentDiaryEntry.mood)}</span>` : ''}
+            ${currentDiaryEntry.weather ? `<span><i class="fas fa-cloud mr-1"></i>${getWeatherLabel(currentDiaryEntry.weather)}</span>` : ''}
             ${currentDiaryEntry.location ? `<span><i class="fas fa-map-marker-alt mr-1"></i>${currentDiaryEntry.location}</span>` : ''}
             ${currentDiaryEntry.template_type && currentDiaryEntry.template_type !== 'free' ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${currentDiaryEntry.template_type === 'cbt' ? 'bg-primary/10 text-primary' : currentDiaryEntry.template_type === 'gratitude' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : currentDiaryEntry.template_type === 'reflection' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : currentDiaryEntry.template_type === 'procrastination' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : currentDiaryEntry.template_type === 'anxiety' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}">${currentDiaryEntry.template_type === 'cbt' ? 'CBT 思维记录' : currentDiaryEntry.template_type === 'gratitude' ? '感恩日记' : currentDiaryEntry.template_type === 'reflection' ? '每日反思' : currentDiaryEntry.template_type === 'procrastination' ? '拖延分析' : currentDiaryEntry.template_type === 'anxiety' ? '焦虑缓解' : currentDiaryEntry.template_type}</span>` : ''}
           </div>
           ${currentDiaryEntry.content ? `
-            <div class="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">${currentDiaryEntry.content}</div>
+            <div class="text-gray-700 dark:text-gray-300 leading-relaxed diary-content">${currentDiaryEntry.content}</div>
           ` : ''}
         </div>
         
@@ -161,22 +196,70 @@ async function viewDiaryEntry(id) {
         
         ${currentDiaryEntry.media && currentDiaryEntry.media.length > 0 ? `
           <div class="mb-4">
-            <h4 class="font-medium text-gray-800 dark:text-white mb-3">媒体文件</h4>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-              ${currentDiaryEntry.media.map(m => `
-                <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  ${m.media_type === 'image' ? `
-                    <img src="${m.file_url}" alt="${m.file_name || '图片'}" class="w-full h-32 object-cover cursor-pointer" onclick="window.open('${m.file_url}', '_blank')">
-                  ` : m.media_type === 'video' ? `
-                    <video src="${m.file_url}" controls class="w-full h-32 object-cover"></video>
+            <h4 class="font-medium text-gray-800 dark:text-white mb-3">附件</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${currentDiaryEntry.media.map(m => {
+                  // 根据文件扩展名判断类型
+                  const fileName = (m.file_name || '').toLowerCase();
+                  let displayType = m.media_type || 'file';
+                  if (fileName.endsWith('.pdf')) displayType = 'pdf';
+                  else if (fileName.endsWith('.txt') || fileName.endsWith('.md') || fileName.endsWith('.log')) displayType = 'text';
+                  else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) displayType = 'doc';
+                  else if (fileName.endsWith('.xls') || fileName.endsWith('.xlsx')) displayType = 'xls';
+                  else if (fileName.endsWith('.ppt') || fileName.endsWith('.pptx')) displayType = 'ppt';
+                  else if (fileName.endsWith('.zip') || fileName.endsWith('.rar') || fileName.endsWith('.7z')) displayType = 'archive';
+
+                  const isPreviewable = displayType === 'image' || displayType === 'pdf' || displayType === 'text';
+
+                  return `
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800 flex flex-col">
+                  ${displayType === 'image' ? `
+                    <img src="${m.file_url}" alt="${m.file_name || '图片'}" class="w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-all" onclick="showImageLightbox('${m.file_url}')">
+                  ` : displayType === 'pdf' ? `
+                    <div class="h-40 bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                      <iframe src="${m.file_url}" class="w-full h-full" frameborder="0"></iframe>
+                    </div>
+                  ` : displayType === 'video' ? `
+                    <video src="${m.file_url}" controls class="w-full h-40 object-cover"></video>
+                  ` : displayType === 'audio' ? `
+                    <div class="h-20 flex items-center justify-center p-4">
+                      <audio src="${m.file_url}" controls class="w-full"></audio>
+                    </div>
+                  ` : displayType === 'text' ? `
+                    <div class="h-40 flex items-center justify-center bg-yellow-50 dark:bg-yellow-900/20">
+                      <i class="fas fa-file-alt text-4xl text-yellow-500"></i>
+                    </div>
+                  ` : displayType === 'doc' ? `
+                    <div class="h-40 flex items-center justify-center bg-blue-50 dark:bg-blue-900/20">
+                      <i class="fas fa-file-word text-4xl text-blue-500"></i>
+                    </div>
+                  ` : displayType === 'archive' ? `
+                    <div class="h-40 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20">
+                      <i class="fas fa-file-archive text-4xl text-purple-500"></i>
+                    </div>
                   ` : `
-                    <div class="h-32 flex items-center justify-center bg-gray-100 dark:bg-gray-700">
-                      <audio src="${m.file_url}" controls class="w-full px-4"></audio>
+                    <div class="h-40 flex items-center justify-center">
+                      <i class="fas fa-file text-4xl text-gray-400"></i>
                     </div>
                   `}
-                  <div class="p-2 text-xs text-gray-500 dark:text-gray-400">${m.file_name || m.media_type}</div>
+                  <div class="p-3 flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${m.file_name || '附件'}</p>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">${displayType}</p>
+                    </div>
+                    <div class="flex gap-1 ml-2">
+                      ${isPreviewable && displayType !== 'image' ? `
+                        <button onclick="previewFile('${m.file_url}', '${displayType}', '${m.file_name || '文件'}')" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-all text-gray-500 hover:text-primary" title="预览">
+                          <i class="fas fa-eye"></i>
+                        </button>
+                      ` : ''}
+                      <a href="${m.file_url}" download="${m.file_name || 'download'}" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-all text-gray-500 hover:text-primary" title="下载">
+                        <i class="fas fa-download"></i>
+                      </a>
+                    </div>
+                  </div>
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
           </div>
         ` : ''}
@@ -207,7 +290,12 @@ function showDiaryModal(entryId = null) {
     entry = diaryEntries.find(e => e.id === entryId) || currentDiaryEntry;
   }
   
-  diaryMediaFiles = [];
+  // 编辑时保留已有附件，新建时清空
+  if (isEdit && entry?.media && Array.isArray(entry.media)) {
+    diaryMediaFiles = entry.media.map(m => ({ ...m, _existing: true }));
+  } else {
+    diaryMediaFiles = [];
+  }
   
   const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop');
   modal.innerHTML = `
@@ -251,31 +339,79 @@ function showDiaryModal(entryId = null) {
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">内容</label>
-          <textarea id="diary-content" rows="6" 
-                    class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all resize-none" 
-                    placeholder="记录你的思考、感受、进展...">${entry?.content || ''}</textarea>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">内容 <span class="text-xs text-gray-400 font-normal">（支持基础格式）</span></label>
+          <!-- 简化工具栏 -->
+          <div class="flex flex-wrap gap-1 p-2 border border-gray-200 dark:border-gray-600 rounded-t-xl bg-gray-50 dark:bg-gray-700">
+            <button type="button" onclick="formatText('bold')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="加粗（Ctrl+B）">
+              <b class="text-sm">B</b>
+            </button>
+            <button type="button" onclick="formatText('italic')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="斜体（Ctrl+I）">
+              <i class="text-sm" style="font-style:italic;">I</i>
+            </button>
+            <button type="button" onclick="formatText('underline')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="下划线（Ctrl+U）">
+              <u class="text-sm">U</u>
+            </button>
+            <span class="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 self-center"></span>
+            <button type="button" onclick="formatText('insertUnorderedList')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="无序列表">
+              <i class="fas fa-list-ul text-sm"></i>
+            </button>
+            <button type="button" onclick="formatText('insertOrderedList')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="有序列表">
+              <i class="fas fa-list-ol text-sm"></i>
+            </button>
+            <span class="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 self-center"></span>
+            <button type="button" onclick="formatText('justifyLeft')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="左对齐">
+              <i class="fas fa-align-left text-sm"></i>
+            </button>
+            <button type="button" onclick="formatText('justifyCenter')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="居中">
+              <i class="fas fa-align-center text-sm"></i>
+            </button>
+            <button type="button" onclick="formatText('justifyRight')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="右对齐">
+              <i class="fas fa-align-right text-sm"></i>
+            </button>
+            <span class="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 self-center"></span>
+            <button type="button" onclick="insertLink()" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="插入链接">
+              <i class="fas fa-link text-sm"></i>
+            </button>
+            <button type="button" onclick="formatText('removeFormat')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-all" title="清除格式">
+              <i class="fas fa-eraser text-sm"></i>
+            </button>
+          </div>
+          <!-- 富文本编辑区域 -->
+          <div id="diary-content-editor" contenteditable="true" 
+               class="w-full px-4 py-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all min-h-[200px] max-h-[400px] overflow-y-auto text-left"
+               style="white-space: pre-wrap; word-wrap: break-word;"
+               data-placeholder="记录你的思考、感受、进展...">${entry?.content || ''}</div>
+          <!-- 隐藏的 textarea 用于表单提交 -->
+          <textarea id="diary-content" style="display:none">${entry?.content || ''}</textarea>
         </div>
         
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">心情</label>
             <select id="diary-mood" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all">
-              <option value="neutral" ${entry?.mood === 'neutral' ? 'selected' : ''}>平静</option>
-              <option value="happy" ${entry?.mood === 'happy' ? 'selected' : ''}>开心</option>
-              <option value="excited" ${entry?.mood === 'excited' ? 'selected' : ''}>兴奋</option>
-              <option value="calm" ${entry?.mood === 'calm' ? 'selected' : ''}>放松</option>
-              <option value="anxious" ${entry?.mood === 'anxious' ? 'selected' : ''}>焦虑</option>
-              <option value="sad" ${entry?.mood === 'sad' ? 'selected' : ''}>难过</option>
-              <option value="angry" ${entry?.mood === 'angry' ? 'selected' : ''}>生气</option>
-              <option value="tired" ${entry?.mood === 'tired' ? 'selected' : ''}>疲惫</option>
+              <option value="neutral" ${entry?.mood === 'neutral' ? 'selected' : ''}>😐 平静</option>
+              <option value="happy" ${entry?.mood === 'happy' ? 'selected' : ''}>😊 开心</option>
+              <option value="excited" ${entry?.mood === 'excited' ? 'selected' : ''}>🎉 兴奋</option>
+              <option value="calm" ${entry?.mood === 'calm' ? 'selected' : ''}>😌 放松</option>
+              <option value="anxious" ${entry?.mood === 'anxious' ? 'selected' : ''}>😰 焦虑</option>
+              <option value="sad" ${entry?.mood === 'sad' ? 'selected' : ''}>😢 难过</option>
+              <option value="angry" ${entry?.mood === 'angry' ? 'selected' : ''}>😠 生气</option>
+              <option value="tired" ${entry?.mood === 'tired' ? 'selected' : ''}>😴 疲惫</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">天气</label>
-            <input type="text" id="diary-weather" value="${entry?.weather || ''}" 
-                   class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all" 
-                   placeholder="晴天、雨天...">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">天气（可选）</label>
+            <select id="diary-weather" class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all">
+              <option value="">不选择</option>
+              <option value="sunny" ${entry?.weather === 'sunny' ? 'selected' : ''}>☀️ 晴天</option>
+              <option value="cloudy" ${entry?.weather === 'cloudy' ? 'selected' : ''}>☁️ 多云</option>
+              <option value="overcast" ${entry?.weather === 'overcast' ? 'selected' : ''}>🌥️ 阴天</option>
+              <option value="rainy" ${entry?.weather === 'rainy' ? 'selected' : ''}>🌧️ 雨天</option>
+              <option value="snowy" ${entry?.weather === 'snowy' ? 'selected' : ''}>❄️ 雪天</option>
+              <option value="foggy" ${entry?.weather === 'foggy' ? 'selected' : ''}>🌫️ 雾天</option>
+              <option value="windy" ${entry?.weather === 'windy' ? 'selected' : ''}>💨 大风</option>
+              <option value="stormy" ${entry?.weather === 'stormy' ? 'selected' : ''}>⛈️ 暴雨</option>
+            </select>
           </div>
         </div>
         
@@ -287,25 +423,31 @@ function showDiaryModal(entryId = null) {
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">媒体文件（图片、视频、语音）</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">附件</label>
           <div id="diary-media-preview" class="mb-3 space-y-2"></div>
-          <div class="flex gap-2">
+          <div class="flex gap-2 flex-wrap">
+            <label class="flex-1">
+              <input type="file" multiple onchange="handleDiaryMediaUpload(this)" class="hidden">
+              <div class="w-full px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-center text-sm text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary cursor-pointer transition-all">
+                <i class="fas fa-paperclip mr-1"></i>添加附件
+              </div>
+            </label>
             <label class="flex-1">
               <input type="file" accept="image/*" multiple onchange="handleDiaryMediaUpload(this, 'image')" class="hidden">
               <div class="w-full px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-center text-sm text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary cursor-pointer transition-all">
-                <i class="fas fa-image mr-1"></i>添加图片
+                <i class="fas fa-image mr-1"></i>图片
               </div>
             </label>
             <label class="flex-1">
               <input type="file" accept="video/*" multiple onchange="handleDiaryMediaUpload(this, 'video')" class="hidden">
               <div class="w-full px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-center text-sm text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary cursor-pointer transition-all">
-                <i class="fas fa-video mr-1"></i>添加视频
+                <i class="fas fa-video mr-1"></i>视频
               </div>
             </label>
             <label class="flex-1">
               <input type="file" accept="audio/*" multiple onchange="handleDiaryMediaUpload(this, 'audio')" class="hidden">
               <div class="w-full px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-center text-sm text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary cursor-pointer transition-all">
-                <i class="fas fa-music mr-1"></i>添加语音
+                <i class="fas fa-music mr-1"></i>音频
               </div>
             </label>
           </div>
@@ -334,6 +476,34 @@ function showDiaryModal(entryId = null) {
   if (entry?.template_type && entry.template_type !== 'free') {
     setTimeout(() => onTemplateChange(), 200);
   }
+
+  // 编辑模式：渲染已有附件预览
+  if (diaryMediaFiles.length > 0) {
+    setTimeout(() => {
+      const preview = $('#diary-media-preview');
+      if (!preview) return;
+      diaryMediaFiles.forEach((m, i) => {
+        const previewItem = el('div', 'flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50');
+        const icon = m.media_type === 'image' ? 'image' : m.media_type === 'video' ? 'video' : 'music';
+        const thumb = m.media_type === 'image' && m.file_url
+          ? `<img src="${m.file_url}" class="w-10 h-10 object-cover rounded">`
+          : `<i class="fas fa-${icon} text-primary"></i>`;
+        previewItem.innerHTML = `
+          ${thumb}
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${m.file_name || '附件'}</p>
+          </div>
+          <button onclick="removeDiaryMediaByIndex(${i})" class="text-danger hover:text-danger/80">
+            <i class="fas fa-times"></i>
+          </button>
+        `;
+        preview.appendChild(previewItem);
+      });
+    }, 150);
+  }
+  
+  // 初始化富文本编辑器
+  setTimeout(() => initDiaryEditor(), 100);
 }
 async function handleDiaryMediaUpload(input, mediaType) {
   const files = input.files;
@@ -341,32 +511,54 @@ async function handleDiaryMediaUpload(input, mediaType) {
   
   for (const file of files) {
     try {
-      // 检查文件大小（限制 5MB）
-      if (file.size > 5 * 1024 * 1024) {
-        showToast(`文件 ${file.name} 超过 5MB 限制`, 'warning');
+      // 自动检测文件类型（如果未提供 mediaType）
+      if (!mediaType) {
+        if (file.type.startsWith('image/')) mediaType = 'image';
+        else if (file.type.startsWith('video/')) mediaType = 'video';
+        else if (file.type.startsWith('audio/')) mediaType = 'audio';
+        else mediaType = 'file'; // 其他文件类型
+      }
+      
+      // 检查文件大小（限制 10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        showToast(`文件 ${file.name} 超过 10MB 限制`, 'warning');
         continue;
       }
       
-      // 转换为 base64
-      const base64 = await new Promise((resolve, reject) => {
+      // 上传到 R2 获取 URL
+      const base64Data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
+        reader.onload = () => {
+          // data:image/png;base64,iVBOR...
+          const b64 = reader.result.split(',')[1];
+          resolve(b64);
+        };
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      
+
+      showToast(`正在上传 ${file.name}...`, 'info');
+      const uploadRes = await api.post('/api/upload', {
+        filename: file.name,
+        content_type: file.type,
+        data: base64Data
+      });
+      if (!uploadRes.url) throw new Error('上传失败：未返回URL');
+
       diaryMediaFiles.push({
         media_type: mediaType,
         file_name: file.name,
-        file_url: base64,
+        file_url: uploadRes.url,
         file_size: file.size
       });
+      showToast(`已上传 ${file.name}`, 'success');
       
       // 显示预览
       const preview = $('#diary-media-preview');
       const previewItem = el('div', 'flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50');
+      const icon = mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'music' : 'paperclip';
       previewItem.innerHTML = `
-        <i class="fas fa-${mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : 'music'} text-primary"></i>
+        <i class="fas fa-${icon} text-primary"></i>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${file.name}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400">${(file.size / 1024).toFixed(1)} KB</p>
@@ -393,6 +585,92 @@ function removeDiaryMedia(btn) {
     diaryMediaFiles.splice(index, 1);
   }
   previewItem.remove();
+}
+
+// ========== 按索引移除媒体文件（用于编辑时移除已有附件）==========
+function removeDiaryMediaByIndex(index) {
+  if (index >= 0 && index < diaryMediaFiles.length) {
+    diaryMediaFiles.splice(index, 1);
+    // 重新渲染预览区域
+    const preview = $('#diary-media-preview');
+    if (preview) {
+      preview.innerHTML = '';
+      diaryMediaFiles.forEach((m, i) => {
+        const previewItem = el('div', 'flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50');
+        const icon = m.media_type === 'image' ? 'image' : m.media_type === 'video' ? 'video' : 'music';
+        const thumb = m.media_type === 'image' && m.file_url
+          ? `<img src="${m.file_url}" class="w-10 h-10 object-cover rounded">`
+          : `<i class="fas fa-${icon} text-primary"></i>`;
+        previewItem.innerHTML = `
+          ${thumb}
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${m.file_name || '附件'}</p>
+          </div>
+          <button onclick="removeDiaryMediaByIndex(${i})" class="text-danger hover:text-danger/80">
+            <i class="fas fa-times"></i>
+          </button>
+        `;
+        preview.appendChild(previewItem);
+      });
+    }
+  }
+}
+
+// ========== 图片灯箱（点击图片查看大图）==========
+function showImageLightbox(url) {
+  // 移除可能已存在的灯箱
+  const existingLightbox = document.querySelector('.image-lightbox-backdrop');
+  if (existingLightbox) existingLightbox.remove();
+
+  const backdrop = el('div', 'image-lightbox-backdrop fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4 fade-in');
+  backdrop.style.cssText = 'animation: fadeIn 0.2s ease;';
+  
+  // 添加淡入动画样式（如果尚未添加）
+  if (!document.getElementById('lightbox-style')) {
+    const style = document.createElement('style');
+    style.id = 'lightbox-style';
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  backdrop.innerHTML = `
+    <div class="relative max-w-[90vw] max-h-[90vh]">
+      <img src="${url}" alt="图片预览" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl">
+      <button onclick="this.closest('.image-lightbox-backdrop').remove()" 
+              class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-all text-xl font-bold z-10">
+        ✕
+      </button>
+    </div>
+  `;
+
+  // 点击背景关闭
+  backdrop.addEventListener('click', function(e) {
+    if (e.target === backdrop) {
+      backdrop.style.animation = 'fadeOut 0.2s ease';
+      setTimeout(() => backdrop.remove(), 200);
+    }
+  });
+
+  // ESC 关闭
+  const escHandler = function(e) {
+    if (e.key === 'Escape') {
+      backdrop.style.animation = 'fadeOut 0.2s ease';
+      setTimeout(() => backdrop.remove(), 200);
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+
+  document.body.appendChild(backdrop);
 }
 
 // ========== 模板定义（系统预设） ==========
@@ -491,51 +769,93 @@ async function loadCustomTemplates() {
 
 // ========== 模板切换事件 ==========
 async function onTemplateChange() {
-  const templateType = $('#diary-template')?.value;
-  const fieldsContainer = $('#diary-template-fields');
-  if (!fieldsContainer) return;
+  try {
+    const templateType = $('#diary-template')?.value;
+    console.log('[template] 选择模板:', templateType);
+    const fieldsContainer = $('#diary-template-fields');
+    if (!fieldsContainer) return;
 
-  if (templateType === 'free') {
-    fieldsContainer.style.display = 'none';
-    fieldsContainer.innerHTML = '';
-    currentTemplateFields = [];
-    return;
-  }
-
-  let template = null;
-  let fields = [];
-  let templateName = '';
-  let templateIcon = '';
-  let templateColor = 'primary';
-
-  // 检查是否是自定义模板
-  if (templateType.startsWith('custom_')) {
-    const templateId = parseInt(templateType.replace('custom_', ''));
-    const customTemplate = cbtTemplates.find(t => t.id === templateId);
-    if (customTemplate) {
-      templateName = customTemplate.name;
-      templateIcon = 'fa-puzzle-piece';
-      templateColor = 'indigo';
-      fields = typeof customTemplate.fields === 'string' ? JSON.parse(customTemplate.fields) : (customTemplate.fields || []);
-      // 增加使用次数
-      try { await api.post('/api/cbt-templates/' + templateId + '/use'); } catch(e) {}
+    if (templateType === 'free' || !templateType) {
+      fieldsContainer.style.display = 'none';
+      fieldsContainer.innerHTML = '';
+      currentTemplateFields = [];
+      return;
     }
-  } else if (SYSTEM_TEMPLATES[templateType]) {
-    template = SYSTEM_TEMPLATES[templateType];
-    templateName = template.name;
-    templateIcon = template.icon;
-    templateColor = template.color;
-    fields = template.fields;
-  }
 
-  if (!fields.length) {
-    fieldsContainer.style.display = 'none';
-    fieldsContainer.innerHTML = '';
-    currentTemplateFields = [];
-    return;
-  }
+    let template = null;
+    let fields = [];
+    let templateName = '';
+    let templateIcon = '';
+    let templateColor = 'primary';
 
-  currentTemplateFields = fields;
+    // 检查是否是自定义模板
+    if (templateType.startsWith('custom_')) {
+      const templateId = parseInt(templateType.replace('custom_', ''));
+      const customTemplate = cbtTemplates.find(t => t.id === templateId);
+      if (customTemplate) {
+        templateName = customTemplate.name;
+        templateIcon = 'fa-puzzle-piece';
+        templateColor = 'indigo';
+        // 安全解析字段（兼容各种格式）
+        let rawFields = [];
+        try {
+          if (typeof customTemplate.fields === 'string' && customTemplate.fields.trim()) {
+            rawFields = JSON.parse(customTemplate.fields);
+          } else if (Array.isArray(customTemplate.fields)) {
+            rawFields = customTemplate.fields;
+          } else {
+            rawFields = [];
+          }
+        } catch (e) {
+          console.error('解析模板字段失败:', e);
+          rawFields = [];
+        }
+        
+        // 兼容：字段可能用 title 而不是 label，确保每個字段都有 label 和 key
+        fields = rawFields.map((f, idx) => {
+          if (!f || typeof f !== 'object') {
+            return { 
+              label: '字段 ' + (idx + 1), 
+              key: 'field_' + Date.now() + '_' + idx, 
+              placeholder: '',
+              icon: 'fa-pen'
+            };
+          }
+          // 兼容 title -> label
+          const label = f.label || f.title || ('字段 ' + (idx + 1));
+          const key = f.key || ('field_' + Date.now() + '_' + idx);
+          return {
+            ...f,
+            label: label,
+            key: key,
+            placeholder: f.placeholder || '',
+            icon: f.icon || 'fa-pen'
+          };
+        }).filter(f => f.label); // 过滤掉 label 为空的字段
+        // 增加使用次数
+        try { await api.post('/api/cbt-templates/' + templateId + '/use'); } catch(e) {}
+      } else {
+        console.warn('[template] 未找到自定义模板:', templateId);
+      }
+    } else if (SYSTEM_TEMPLATES[templateType]) {
+      template = SYSTEM_TEMPLATES[templateType];
+      templateName = template.name;
+      templateIcon = template.icon;
+      templateColor = template.color;
+      fields = template.fields;
+      console.log('[template] 使用系统模板:', templateName, '字段数:', fields ? fields.length : 0);
+    } else {
+      console.warn('[template] 未知模板类型:', templateType);
+    }
+
+    if (!fields || !fields.length) {
+      fieldsContainer.style.display = 'none';
+      fieldsContainer.innerHTML = '';
+      currentTemplateFields = [];
+      return;
+    }
+
+    currentTemplateFields = fields;
 
   // 获取编辑时的已有数据
   const existingData = {};
@@ -575,6 +895,10 @@ async function onTemplateChange() {
     </div>
   `;
   fieldsContainer.style.display = 'block';
+  } catch (err) {
+    console.error('[template] onTemplateChange 错误:', err);
+    showToast('模板切换失败: ' + (err.message || err), 'error');
+  }
 }
 
 // ========== 显示模板管理器 ==========
@@ -655,11 +979,19 @@ async function showTemplateManager() {
           <input type="text" id="new-template-desc" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm" placeholder="简短描述模板用途">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">模板字段</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">模板字段 <span class="text-xs text-gray-400 font-normal">（至少一个，字段名将作为日记中的段落标题）</span></label>
+          <div class="mb-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+            <p class="text-xs text-blue-700 dark:text-blue-400">💡 字段规则说明：</p>
+            <ul class="text-xs text-blue-600 dark:text-blue-400 mt-1 ml-4 list-disc space-y-0.5">
+              <li>字段名：必填，将作为日记中该段落的标题（如"自动思维"、"情绪感受"）</li>
+              <li>提示文字：选填，将作为输入框的占位提示文字</li>
+              <li>保存后字段不可修改，请仔细填写</li>
+            </ul>
+          </div>
           <div id="new-template-fields" class="space-y-2">
             <div class="flex gap-2 items-center">
-              <input type="text" placeholder="字段名" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-label">
-              <input type="text" placeholder="提示文字" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-placeholder">
+              <input type="text" placeholder="字段名（如：自动思维）" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-label">
+              <input type="text" placeholder="提示文字（选填）" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none text-sm tpl-field-placeholder">
               <button onclick="this.closest('div').remove()" class="px-2 py-1 text-danger hover:bg-danger/10 rounded-lg transition-all"><i class="fas fa-times"></i></button>
             </div>
           </div>
@@ -680,14 +1012,35 @@ async function showTemplateManager() {
 
 // ========== 使用模板（从模板管理器） ==========
 function useTemplate(templateKey) {
-  // 关闭模板管理器
-  document.querySelector('.modal-backdrop')?.remove();
-  
-  // 设置选择器并触发切换
-  const select = $('#diary-template');
-  if (select) {
-    select.value = templateKey;
-    onTemplateChange();
+  try {
+    console.log('[useTemplate] 使用模板:', templateKey);
+    // 关闭模板管理器
+    document.querySelector('.modal-backdrop')?.remove();
+    
+    // 设置选择器并触发切换
+    const select = document.getElementById('diary-template');
+    if (select) {
+      // 检查模板值是否存在于选项中
+      let found = false;
+      for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === templateKey) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        console.warn('[useTemplate] 模板值不在选项中:', templateKey);
+        showToast('模板选项不存在', 'warning');
+        return;
+      }
+      select.value = templateKey;
+      onTemplateChange();
+    } else {
+      console.warn('[useTemplate] 未找到模板选择器');
+    }
+  } catch (err) {
+    console.error('[useTemplate] 错误:', err);
+    showToast('使用模板失败', 'error');
   }
 }
 
@@ -869,6 +1222,8 @@ window.viewDiaryEntry = viewDiaryEntry;
 window.showDiaryModal = showDiaryModal;
 window.handleDiaryMediaUpload = handleDiaryMediaUpload;
 window.removeDiaryMedia = removeDiaryMedia;
+window.removeDiaryMediaByIndex = removeDiaryMediaByIndex;
+window.showImageLightbox = showImageLightbox;
 window.saveDiaryEntry = saveDiaryEntry;
 window.editDiaryEntry = editDiaryEntry;
 window.deleteDiaryEntry = deleteDiaryEntry;
@@ -880,3 +1235,131 @@ window.addTemplateField = addTemplateField;
 window.showCreateTemplateForm = showCreateTemplateForm;
 window.saveNewTemplate = saveNewTemplate;
 window.deleteCustomTemplate = deleteCustomTemplate;
+
+// ========== 富文本编辑器辅助函数 ==========
+// 插入链接
+window.insertLink = function() {
+  const url = prompt('请输入链接地址：', 'https://');
+  if (url) {
+    document.execCommand('createLink', false, url);
+  }
+};
+
+// 同步富文本编辑器内容到 textarea
+function syncDiaryContent() {
+  const editor = document.getElementById('diary-content-editor');
+  const textarea = document.getElementById('diary-content');
+  if (editor && textarea) {
+    textarea.value = editor.innerHTML;
+  }
+}
+
+// 在 showDiaryModal 函数中调用此函数
+function initDiaryEditor() {
+  const editor = document.getElementById('diary-content-editor');
+  if (editor) {
+    editor.addEventListener('input', syncDiaryContent);
+    editor.addEventListener('blur', syncDiaryContent);
+    
+    // 动态注入编辑器样式（确保列表、引用、标题正确显示）
+    if (!document.getElementById('diary-editor-styles')) {
+      const style = document.createElement('style');
+      style.id = 'diary-editor-styles';
+      style.textContent = `
+        #diary-content-editor ol { list-style-type: decimal; margin-left: 1.5em; padding-left: 0.5em; }
+        #diary-content-editor ul { list-style-type: disc; margin-left: 1.5em; padding-left: 0.5em; }
+        #diary-content-editor ol li, #diary-content-editor ul li { display: list-item; }
+        #diary-content-editor blockquote { border-left: 3px solid #6366F1; margin: 0.5em 0; padding: 0.3em 0.8em; color: #555; background: rgba(99,102,241,0.05); border-radius: 0 0.5em 0.5em 0; }
+        #diary-content-editor h1 { font-size: 1.4em; font-weight: 700; margin: 0.5em 0 0.3em 0; }
+        #diary-content-editor h2 { font-size: 1.2em; font-weight: 600; margin: 0.4em 0 0.2em 0; }
+        #diary-content-editor a { color: #6366F1; text-decoration: underline; }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+}
+
+window.initDiaryEditor = initDiaryEditor;
+
+// ========== 富文本编辑辅助函数 ==========
+function formatText(command) {
+  const editor = document.getElementById('diary-content-editor');
+  if (!editor) return;
+  editor.focus();
+  document.execCommand(command, false, null);
+}
+
+function insertLink() {
+  const editor = document.getElementById('diary-content-editor');
+  if (!editor) return;
+  const url = prompt('请输入链接地址（如：https://...）', 'https://');
+  if (url && url !== 'https://') {
+    editor.focus();
+    document.execCommand('createLink', false, url);
+  }
+}
+
+// ========== 预览文件 ==========
+function previewFile(url, type, name) {
+  console.log('[previewFile] 预览文件:', { url, type, name });
+  if (!url) {
+    showToast('文件 URL 无效', 'error');
+    return;
+  }
+  
+  const modal = el('div', 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 modal-backdrop');
+  
+  let iframeHtml = '';
+  // 统一处理类型
+  const fileType = type === 'pdf' ? 'pdf' : (type === 'text' ? 'text' : 'other');
+  
+  if (fileType === 'pdf') {
+    iframeHtml = `<iframe src="${url}" class="w-full h-[75vh] rounded-b-2xl" frameborder="0"></iframe>`;
+  } else if (fileType === 'text') {
+    iframeHtml = `<div class="p-8 text-center text-gray-500">正在加载文本内容...</div>`;
+    // fetch 加载文本
+    fetch(url).then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(txt => {
+      const pre = modal.querySelector('#preview-text-content');
+      if (pre) pre.textContent = txt;
+    }).catch(() => {
+      const pre = modal.querySelector('#preview-text-content');
+      if (pre) pre.textContent = '无法加载文件内容';
+    });
+    iframeHtml = `<pre id="preview-text-content" class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300 p-8 overflow-y-auto max-h-[75vh]"></pre>`;
+  } else {
+    // 其他类型：直接显示下载链接
+    iframeHtml = `
+      <div class="p-8 text-center">
+        <i class="fas fa-file text-4xl text-gray-400 mb-4"></i>
+        <p class="text-gray-600 dark:text-gray-400 mb-4">该文件类型无法直接预览</p>
+        <a href="${url}" download="${name || 'download'}" class="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all">下载文件</a>
+      </div>
+    `;
+  }
+
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden modal-content shadow-2xl">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+        <h3 class="font-bold text-lg text-gray-800 dark:text-white truncate">${name || '文件预览'}</h3>
+        <div class="flex gap-2">
+          <a href="${url}" download="${name || 'download'}" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all text-gray-500 hover:text-primary" title="下载">
+            <i class="fas fa-download"></i>
+          </a>
+          <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+      </div>
+      ${iframeHtml}
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+window.previewFile = previewFile;
+
+window.formatText = formatText;
+window.insertLink = insertLink;

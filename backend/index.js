@@ -282,6 +282,31 @@ async function migrateDatabase(db) {
       console.log('Weekly plans table creation failed:', e.message);
     }
     
+    // user_templates 表（周视图用户自定义模板）
+    try {
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS user_templates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT DEFAULT '',
+          category TEXT DEFAULT 'custom',
+          day_of_week INTEGER,
+          start_time TEXT,
+          end_time TEXT,
+          priority INTEGER DEFAULT 3,
+          color TEXT DEFAULT '#6366F1',
+          sort_order INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `).run();
+      console.log('User templates table ready');
+    } catch (e) {
+      console.log('User templates table creation failed:', e.message);
+    }
+    
     // tasks 表新增 source 列（若不存在）
     try {
       await db.prepare(`ALTER TABLE tasks ADD COLUMN source TEXT DEFAULT ''`).run();
@@ -2859,6 +2884,101 @@ router.post('/api/weekly-plans/sync-to-tasks', async (req, env) => {
     return jsonResponse({ success: true, synced, skipped, updated, total: plans.length, message: `同步完成：新增 ${synced} 个，更新 ${updated} 个，跳过 ${skipped} 个重复` });
   } catch (e) {
     return jsonResponse({ error: '同步失败: ' + e.message }, 500);
+  }
+});
+
+// ========== 周视图用户模板API ==========
+
+// 获取用户模板列表
+router.get('/api/weekly-plans/templates', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    const { results } = await env.DB.prepare(
+      'SELECT * FROM user_templates WHERE user_id = ? ORDER BY sort_order ASC, day_of_week ASC'
+    ).bind(auth.userId).all();
+    return jsonResponse({ success: true, templates: results || [] });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500);
+  }
+});
+
+// 创建模板
+router.post('/api/weekly-plans/templates', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    var body = await req.json();
+    if (!body.title || !body.title.trim()) return jsonResponse({ error: '标题不能为空' }, 400);
+    var r = await env.DB.prepare(
+      `INSERT INTO user_templates (user_id, title, description, category, day_of_week, start_time, end_time, priority, color, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(auth.userId, sanitize(body.title), sanitize(body.description||''), sanitize(body.category||'custom',50),
+           body.day_of_week != null ? body.day_of_week : null, body.start_time||null, body.end_time||null,
+           body.priority||3, body.color||'#6366F1', body.sort_order||0).run();
+    return jsonResponse({ success: true, id: getLastRowId(r) });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500);
+  }
+});
+
+// 更新模板
+router.put('/api/weekly-plans/templates/:id', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    var body = await req.json();
+    var sets = [], vals = [];
+    ['title','description','category','day_of_week','start_time','end_time','priority','color','sort_order'].forEach(function(k) {
+      if (body[k] !== undefined) { sets.push(k + ' = ?'); vals.push(k === 'title' ? sanitize(body[k],200) : sanitize(String(body[k]),500)); }
+    });
+    if (sets.length === 0) return jsonResponse({ error: '没有需要更新的字段' }, 400);
+    sets.push('updated_at = CURRENT_TIMESTAMP');
+    vals.push(auth.userId, req.params.id);
+    await env.DB.prepare('UPDATE user_templates SET ' + sets.join(', ') + ' WHERE user_id = ? AND id = ?').bind(...vals).run();
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500);
+  }
+});
+
+// 删除模板
+router.delete('/api/weekly-plans/templates/:id', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    await env.DB.prepare('DELETE FROM user_templates WHERE user_id = ? AND id = ?').bind(auth.userId, req.params.id).run();
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500);
+  }
+});
+
+// 使用模板初始化某周（替代内置模板）
+router.post('/api/weekly-plans/init-custom-templates', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    var body = await req.json();
+    var weekStart = body.week_start;
+    if (!weekStart) return jsonResponse({ error: '请指定周起始日期' }, 400);
+    
+    var templates = await env.DB.prepare(
+      'SELECT * FROM user_templates WHERE user_id = ? ORDER BY sort_order ASC'
+    ).bind(auth.userId).all();
+    
+    var count = 0;
+    for (var t of (templates.results || [])) {
+      await env.DB.prepare(
+        `INSERT INTO weekly_plans (user_id, title, description, category, day_of_week, start_time, end_time, priority, color, week_start, is_builtin)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+      ).bind(auth.userId, t.title, t.description||'', t.category||'custom', t.day_of_week,
+             t.start_time||null, t.end_time||null, t.priority||3, t.color||'#6366F1', weekStart).run();
+      count++;
+    }
+    return jsonResponse({ success: true, count: count, message: '已导入 ' + count + ' 条自定义模板' });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500);
   }
 });
 

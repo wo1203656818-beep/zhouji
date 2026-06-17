@@ -337,8 +337,7 @@ const routes = {
   'stats': function() { return (window.renderStats || renderStats).apply(this, arguments); },
   'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
   'time-blocks': renderTimeBlocks, 'lab': renderLab,
-  'assistant': function() { return (window.renderAssistant || renderAssistant).apply(this, arguments); },
-  'achievements': function() { return (window.renderAchievements || renderAchievements).apply(this, arguments); },
+  'assistant': function() { return window.renderAssistant.apply(this, arguments); },
   'settings': renderSettings
 };
 
@@ -465,7 +464,6 @@ function renderNav() {
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
-    { id: 'achievements', icon: 'fa-trophy', label: '成就' },
   ];
   
   const mobileItems = [
@@ -602,7 +600,6 @@ function toggleMobileMorePanel() {
   const moreItems = [
     { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
-    { id: 'achievements', icon: 'fa-trophy', label: '成就' },
     { id: 'assistant', icon: 'fa-robot', label: '助手' },
     { id: 'settings', icon: 'fa-cog', label: '设置' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
@@ -901,7 +898,7 @@ async function renderDashboard() {
         </div>
       </div>
 
-      <div class="grid grid-cols-5 gap-2 mb-3">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-3 max-w-full overflow-hidden">
         <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-2.5 text-center shadow-sm">
           <span class="text-xs text-gray-400 dark:text-gray-500 block">今日任务</span>
           <span class="block text-lg font-bold text-gray-800 dark:text-white">${todayTasksTotal}</span>
@@ -929,7 +926,7 @@ async function renderDashboard() {
         </div>
       </div>
 
-      <div class="grid lg:grid-cols-4 gap-3">
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
         <div class="lg:col-span-2 space-y-3">
           <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
             <div class="flex items-center justify-between mb-2">

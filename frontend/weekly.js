@@ -17,7 +17,8 @@ var W = {
     { id: 'custom',       label: '自定义', icon: 'fa-pen',     color: '#8B5CF6' }
   ],
   WEEKDAY: ['周日','周一','周二','周三','周四','周五','周六'],
-  COLORS: ['#6366F1','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899']
+  COLORS: ['#6366F1','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899'],
+  COLOR_NAMES: { '#6366F1':'靛蓝', '#10B981':'绿色', '#F59E0B':'橙色', '#EF4444':'红色', '#8B5CF6':'紫色', '#EC4899':'粉色' }
 };
 
 // ╔══════════════════════════════════════════════════════════════════╗
@@ -180,6 +181,16 @@ var A = {
     return A._call(function() {
       return api.post('/api/weekly-plans/sync-to-tasks', { plan_ids: ids || [], week_start: w, keep_existing: true });
     }, 'sync');
+  },
+
+  // ═══ 模板管理 ═══
+  getTemplates: function() { return A._call(function() { return api.get('/api/weekly-plans/templates'); }, 'getTemplates'); },
+  createTemplate: function(d) { return A._call(function() { return api.post('/api/weekly-plans/templates', d); }, 'createTemplate'); },
+  updateTemplate: function(id, d) { return A._call(function() { return api.put('/api/weekly-plans/templates/' + id, d); }, 'updateTemplate'); },
+  deleteTemplate: function(id) { return A._call(function() { return api.del('/api/weekly-plans/templates/' + id); }, 'deleteTemplate'); },
+  initCustomTemplates: function(ws) {
+    var w = ws || S.weekStart;
+    return A._call(function() { return api.post('/api/weekly-plans/init-custom-templates', { week_start: w }); }, 'initCustomTemplates');
   }
 };
 
@@ -328,6 +339,10 @@ var R = {
       for (var j = 0; j < plans.length; j++) {
         h += R.compactCard(plans[j]);
       }
+      // 非空列底部也显示"+ 添加"按钮
+      h += '<div class="text-center pt-1.5">';
+      h += '<button onclick="event.stopPropagation();H.showAdd(' + dayIdx + ')" class="text-[10px] text-indigo-400 hover:underline">+ 添加</button>';
+      h += '</div>';
     }
     h += '</div>';
     // "查看全部"（超过4项时折叠）
@@ -380,7 +395,7 @@ var R = {
     h += '<div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">';
     h += '<h3 class="font-bold text-gray-800 dark:text-white mb-3 text-lg">' + W.WEEKDAY[dayIdx] + ' ' + ds + '</h3>';
     if (plans.length === 0) {
-      h += '<p class="text-sm text-gray-400 text-center py-12">这一天没有计划</p>';
+      h += '<p class="text-sm text-gray-400 text-center py-8">这一天没有计划</p>';
     } else {
       h += '<div class="space-y-3">';
       for (var i = 0; i < plans.length; i++) {
@@ -388,6 +403,8 @@ var R = {
       }
       h += '</div>';
     }
+    // 添加按钮
+    h += '<div class="text-center mt-3"><button onclick="H.showAdd(' + dayIdx + ')" class="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-all"><i class="fas fa-plus mr-1"></i>添加计划</button></div>';
     h += '</div></div>';
     return h;
   },
@@ -461,7 +478,7 @@ var R = {
       '</select></div>' +
       '<div><label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">颜色</label>' +
       '<select id="wa-color" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-800 dark:text-white">' +
-      W.COLORS.map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('') +
+      W.COLORS.map(function(c) { return '<option value="' + c + '">● ' + (W.COLOR_NAMES[c]||c) + '</option>'; }).join('') +
       '</select></div></div>' +
       '<div class="grid grid-cols-2 gap-3">' +
       '<div><label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">开始</label>' +
@@ -556,6 +573,9 @@ var R = {
       '<button onclick="H.closeModal();H.initTemplates()" class="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-left">' +
       '<div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500"><i class="fas fa-magic text-sm"></i></div>' +
       '<div><p class="text-sm font-medium text-gray-800 dark:text-white">重置模板</p><p class="text-xs text-gray-400">恢复三套预设模板</p></div></button>' +
+      '<button onclick="H.closeModal();H.showTemplateEditor()" class="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-left">' +
+      '<div class="w-9 h-9 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center text-purple-500"><i class="fas fa-pen text-sm"></i></div>' +
+      '<div><p class="text-sm font-medium text-gray-800 dark:text-white">编辑模板</p><p class="text-xs text-gray-400">自定义每日模板内容</p></div></button>' +
       '<button onclick="H.closeModal();H.clearWeek()" class="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-left">' +
       '<div class="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-500"><i class="fas fa-eraser text-sm"></i></div>' +
       '<div><p class="text-sm font-medium text-gray-800 dark:text-white">清空本周</p><p class="text-xs text-gray-400">删除所有计划</p></div></button>' +
@@ -948,6 +968,123 @@ var H = {
     for (var i = 0; i < modals.length; i++) {
       if (modals[i].parentNode) modals[i].remove();
     }
+  },
+
+  // ═══ 模板编辑器 ═══
+  showTemplateEditor: async function() {
+    var resp = await A.getTemplates();
+    var templates = (resp.ok && resp.data && resp.data.templates) ? resp.data.templates : [];
+
+    var modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+    var html = '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-5 shadow-xl" onclick="event.stopPropagation()">';
+    html += '<div class="flex items-center justify-between mb-4"><h3 class="font-bold text-gray-800 dark:text-white"><i class="fas fa-pen text-purple-500 mr-2"></i>编辑模板</h3><button onclick="this.closest(\'.fixed\').remove()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button></div>';
+    html += '<p class="text-xs text-gray-400 mb-4">自定义每日模板，保存后点击"使用自定义模板"应用到本周</p>';
+
+    // 模板列表
+    if (templates.length === 0) {
+      html += '<div class="text-center py-6 text-gray-400"><i class="fas fa-file text-2xl mb-2"></i><p class="text-xs">还没有自定义模板</p></div>';
+    } else {
+      html += '<div class="space-y-2 mb-4">';
+      for (var i = 0; i < templates.length; i++) {
+        var t = templates[i];
+        var dayLabel = t.day_of_week != null ? ['周日','周一','周二','周三','周四','周五','周六'][t.day_of_week] : '全部';
+        html += '<div class="flex items-center gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700">' +
+          '<div class="flex-1 min-w-0"><p class="text-sm font-medium text-gray-800 dark:text-white truncate">' + escapeHtml(t.title) + '</p>' +
+          '<p class="text-xs text-gray-400">' + dayLabel + ' · ' + (t.start_time ? t.start_time.slice(0,5) : '') + (t.end_time ? '-' + t.end_time.slice(0,5) : '') + '</p></div>' +
+          '<button onclick="H.editTemplateItem(' + t.id + ')" class="px-2 py-1 rounded-lg text-[10px] text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"><i class="fas fa-edit"></i></button>' +
+          '<button onclick="H.deleteTemplateItem(' + t.id + ')" class="px-2 py-1 rounded-lg text-[10px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><i class="fas fa-trash"></i></button></div>';
+      }
+      html += '</div>';
+    }
+
+    // 底部按钮
+    html += '<div class="flex gap-2">';
+    html += '<button onclick="H.addTemplateItem()" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 transition-all"><i class="fas fa-plus mr-1"></i>新建模板</button>';
+    if (templates.length > 0) {
+      html += '<button onclick="H.applyTemplates()" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-all"><i class="fas fa-check mr-1"></i>使用自定义模板</button>';
+    }
+    html += '</div></div>';
+
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+  },
+
+  addTemplateItem: function() {
+    H.showTemplateForm(null);
+  },
+
+  editTemplateItem: function(id) {
+    H.showTemplateForm(id);
+  },
+
+  deleteTemplateItem: async function(id) {
+    var ok = await showConfirmModal('确认删除此模板？', '删除');
+    if (!ok) return;
+    var resp = await A.deleteTemplate(id);
+    if (resp.ok) { showToast('已删除', 'success'); H.showTemplateEditor(); }
+    else showToast('删除失败', 'error');
+  },
+
+  showTemplateForm: async function(editId) {
+    var data = {};
+    if (editId) {
+      var resp = await A.getTemplates();
+      if (resp.ok && resp.data) {
+        var found = (resp.data.templates || []).find(function(t) { return t.id === editId; });
+        if (found) data = found;
+      }
+    }
+    var dayOptions = ['周日','周一','周二','周三','周四','周五','周六'];
+    var daySel = '<select id="te-day" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-xs">';
+    daySel += '<option value="">全部</option>';
+    for (var di = 0; di < 7; di++) {
+      daySel += '<option value="' + di + '"' + (data.day_of_week === di ? ' selected' : '') + '>' + dayOptions[di] + '</option>';
+    }
+    daySel += '</select>';
+
+    var modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.innerHTML = '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-5 shadow-xl" onclick="event.stopPropagation()">' +
+      '<h3 class="font-bold text-gray-800 dark:text-white mb-4">' + (editId ? '编辑' : '新建') + '模板</h3>' +
+      '<div class="space-y-3">' +
+      '<div><label class="text-xs text-gray-500 block mb-1">标题</label><input id="te-title" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="' + escapeHtml(data.title||'') + '"></div>' +
+      '<div><label class="text-xs text-gray-500 block mb-1">星期</label>' + daySel + '</div>' +
+      '<div class="grid grid-cols-2 gap-2"><div><label class="text-xs text-gray-500 block mb-1">开始时间</label><input id="te-start" type="time" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="' + (data.start_time||'') + '"></div>' +
+      '<div><label class="text-xs text-gray-500 block mb-1">结束时间</label><input id="te-end" type="time" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="' + (data.end_time||'') + '"></div></div>' +
+      '<div><label class="text-xs text-gray-500 block mb-1">描述（可选）</label><input id="te-desc" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="' + escapeHtml(data.description||'') + '"></div>' +
+      '</div>' +
+      '<div class="flex gap-2 mt-5"><button onclick="H.saveTemplateItem(' + (editId || 'null') + ')" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-all">保存</button>' +
+      '<button onclick="this.closest(\'.fixed\').remove()" class="flex-1 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700">取消</button></div></div>';
+    document.body.appendChild(modal);
+  },
+
+  saveTemplateItem: async function(editId) {
+    var title = document.getElementById('te-title')?.value?.trim();
+    if (!title) { showToast('请输入标题', 'warning'); return; }
+    var data = {
+      title: title,
+      day_of_week: document.getElementById('te-day')?.value || null,
+      start_time: document.getElementById('te-start')?.value || null,
+      end_time: document.getElementById('te-end')?.value || null,
+      description: document.getElementById('te-desc')?.value?.trim() || ''
+    };
+    if (data.day_of_week === '') data.day_of_week = null;
+    var resp = editId ? await A.updateTemplate(editId, data) : await A.createTemplate(data);
+    if (resp.ok) { showToast(editId ? '已更新' : '已创建', 'success'); H.showTemplateEditor(); }
+    else showToast('保存失败', 'error');
+  },
+
+  applyTemplates: async function() {
+    H.closeModal();
+    var ok = await showConfirmModal('使用自定义模板导入本周计划？（将覆盖现有计划）', '确认');
+    if (!ok) return;
+    var resp = await A.initCustomTemplates();
+    if (resp.ok) { showToast(resp.data.message || '已导入自定义模板', 'success'); H.refresh(); }
+    else showToast('导入失败', 'error');
   }
 };
 

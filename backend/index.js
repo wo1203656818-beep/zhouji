@@ -313,6 +313,10 @@ async function migrateDatabase(db) {
       console.log('Tasks source column added');
     } catch (e) { /* 列已存在则忽略 */ }
     
+    // tasks 表新增 is_pinned 和 sort_order 列
+    try { await db.prepare(`ALTER TABLE tasks ADD COLUMN is_pinned INTEGER DEFAULT 0`).run(); } catch (e) { /* 列已存在则忽略 */ }
+    try { await db.prepare(`ALTER TABLE tasks ADD COLUMN sort_order INTEGER DEFAULT 0`).run(); } catch (e) { /* 列已存在则忽略 */ }
+    
     dbMigrated = true;
     console.log('Database migration completed');
   } catch (e) {
@@ -809,6 +813,8 @@ router.put('/api/tasks/:id', async (req, env) => {
     if (difficulty !== undefined) { updates.push('difficulty = ?'); bindings.push(Math.min(5, Math.max(1, parseInt(difficulty) || 3))); }
     if (priority !== undefined) { updates.push('priority = ?'); bindings.push(Math.min(5, Math.max(1, parseInt(priority) || 3))); }
     if (due_date !== undefined) { updates.push('due_date = ?'); bindings.push(due_date); }
+    if (is_pinned !== undefined) { updates.push('is_pinned = ?'); bindings.push(is_pinned ? 1 : 0); }
+    if (sort_order !== undefined) { updates.push('sort_order = ?'); bindings.push(parseInt(sort_order) || 0); }
     updates.push('updated_at = CURRENT_TIMESTAMP');
     bindings.push(taskId, auth.userId);
 
@@ -825,6 +831,27 @@ router.put('/api/tasks/:id', async (req, env) => {
     return jsonResponse({ success: true });
   } catch (e) {
     return jsonResponse({ error: '服务器内部错误', detail: env.NODE_ENV === 'development' ? e.message : undefined }, 500);
+  }
+});
+
+// 批量更新任务排序（拖拽后）
+router.post('/api/tasks/reorder', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    const { orders } = await req.json(); // { taskId: sort_order, ... } 或 [{id, sort_order}, ...]
+    if (!orders || !Array.isArray(orders)) return jsonResponse({ error: '参数无效' }, 400);
+    const db = env.DB;
+    for (var o of orders) {
+      if (o.id && o.sort_order != null) {
+        await db.prepare('UPDATE tasks SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?')
+          .bind(parseInt(o.sort_order) || 0, o.id, auth.userId).run();
+      }
+    }
+    await clearDashCache(env, auth.userId);
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500);
   }
 });
 

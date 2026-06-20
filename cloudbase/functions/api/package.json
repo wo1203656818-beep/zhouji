@@ -1,0 +1,10 @@
+{
+  "name": "zhouji-cloudbase-api",
+  "version": "1.0.0",
+  "description": "周迹 - CloudBase Cloud Function API",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.0",
+    "jsonwebtoken": "^9.0.0"
+  }
+}

@@ -1224,6 +1224,15 @@ function renderTasks() {
       <button onclick="filterTasks('in_progress')" class="task-filter px-4 py-2 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 whitespace-nowrap touch-btn" data-filter="in_progress">进行中</button>
       <button onclick="filterTasks('completed')" class="task-filter px-4 py-2 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 whitespace-nowrap touch-btn" data-filter="completed">已完成</button>
     </div>
+    <!-- 排序工具栏 -->
+    <div class="flex items-center gap-2 mb-4 text-xs text-gray-500 dark:text-gray-400 overflow-x-auto pb-1">
+      <span class="font-medium whitespace-nowrap"><i class="fas fa-sort mr-1"></i>排序：</span>
+      <button onclick="setTaskSort('manual')" class="sort-btn px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap" data-sort="manual">手动</button>
+      <button onclick="setTaskSort('priority')" class="sort-btn px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap" data-sort="priority">优先级</button>
+      <button onclick="setTaskSort('due_date')" class="sort-btn px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap" data-sort="due_date">截止日期</button>
+      <button onclick="setTaskSort('status')" class="sort-btn px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap" data-sort="status">状态</button>
+      <button onclick="setTaskSort('created')" class="sort-btn px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap" data-sort="created">创建时间</button>
+    </div>
     <div class="mb-4">
       <input type="text" id="task-search" placeholder="搜索任务..." class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all" oninput="debouncedSearch()">
     </div>
@@ -1236,6 +1245,7 @@ function renderTasks() {
 }
 
 let currentTaskFilter = 'all';
+let taskSortBy = 'manual'; // manual | priority | due_date | status | created
 const debouncedSearch = debounce(() => loadTasks(), 300);
 
 async function loadTasks() {
@@ -1244,43 +1254,133 @@ async function loadTasks() {
     let params = currentTaskFilter !== 'all' ? `?status=${currentTaskFilter}` : '';
     if (search) params += (params ? '&' : '?') + `search=${encodeURIComponent(search)}`;
     const data = await api.get('/api/tasks' + params);
-    state.tasks = data.tasks || [];
+    var tasks = data.tasks || [];
+    
+    // 客户端排序
+    if (taskSortBy === 'priority') {
+      tasks.sort(function(a,b) { return (a.priority||99) - (b.priority||99); });
+    } else if (taskSortBy === 'due_date') {
+      tasks.sort(function(a,b) {
+        if (!a.due_date) return 1; if (!b.due_date) return -1;
+        return a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0;
+      });
+    } else if (taskSortBy === 'status') {
+      var st = { 'pending': 0, 'in_progress': 1, 'completed': 2 };
+      tasks.sort(function(a,b) { return (st[a.status]||0) - (st[b.status]||0); });
+    } else if (taskSortBy === 'created') {
+      tasks.sort(function(a,b) { return a.created_at > b.created_at ? -1 : a.created_at < b.created_at ? 1 : 0; });
+    } else {
+      // manual: 置顶优先, 然后按 sort_order
+      tasks.sort(function(a,b) {
+        if (a.is_pinned && !b.is_pinned) return -1;
+        if (!a.is_pinned && b.is_pinned) return 1;
+        return (a.sort_order||0) - (b.sort_order||0);
+      });
+    }
+    
+    state.tasks = tasks;
     const container = $('#tasks-list');
-    if (!state.tasks.length) {
+    if (!tasks.length) {
       container.innerHTML = `<div class="text-center py-12"><i class="fas fa-clipboard text-4xl text-gray-300 dark:text-gray-600 mb-4"></i><p class="text-gray-500 dark:text-gray-400">还没有任务</p><button onclick="showTaskModal()" class="mt-4 text-primary font-medium">创建第一个任务</button></div>`;
       return;
     }
-    container.innerHTML = state.tasks.map(task => `
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 hover:border-primary/30 dark:hover:border-primary/30 transition-all ${task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'border-red-300 dark:border-red-700' : ''}">
-        <div class="flex items-start justify-between mb-3">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400"><i class="fas fa-${getCategoryIcon(task.category)}"></i></div>
-            <div>
-              <div class="flex items-center gap-2">
-                <h4 class="font-medium text-gray-800 dark:text-gray-200">${task.title}</h4>
-                ${task.priority ? `<span class="px-2 py-0.5 rounded text-xs font-medium ${getPriorityStyle(task.priority)}">${getPriorityLabel(task.priority)}</span>` : ''}
-              </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">${task.category || 'general'} · 难度 ${'★'.repeat(task.difficulty || 2)}${'☆'.repeat(5-(task.difficulty || 2))}</p>
-            </div>
-          </div>
-          <span class="px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(task.status)}">${getStatusLabel(task.status)}</span>
-        </div>
-        ${task.description ? `<p class="text-sm text-gray-600 dark:text-gray-400 mb-3">${task.description}</p>` : ''}
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <span><i class="fas fa-shoe-prints mr-1"></i>${task.steps_count || 0} 个步骤</span>
-            ${task.due_date ? `<span class="${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-500 dark:text-red-400 font-medium' : ''}"><i class="fas fa-calendar mr-1"></i>${task.due_date}${new Date(task.due_date) < new Date() && task.status !== 'completed' ? ' ⚠️' : ''}</span>` : ''}
-          </div>
-          <div class="flex gap-2">
-            <button onclick="navigate('task-detail', {id: ${task.id}})" class="px-3 py-1.5 rounded-lg text-sm bg-primary/10 text-primary hover:bg-primary/20 transition-all touch-btn">拆解</button>
-            ${task.status !== 'completed' ? `<button onclick="quickMicroStart(${task.id})" class="px-3 py-1.5 rounded-lg text-sm bg-secondary/10 text-secondary hover:bg-secondary/20 transition-all touch-btn">启动</button>` : ''}
-            <button onclick="deleteTask(${task.id})" aria-label="删除任务" class="px-3 py-1.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all touch-btn"><i class="fas fa-trash"></i></button>
-          </div>
-        </div>
-      </div>
-    `).join('');
+    container.innerHTML = tasks.map(function(task) {
+      var isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed';
+      return '<div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border ' + (isOverdue ? 'border-red-300 dark:border-red-700' : 'border-gray-100 dark:border-gray-700 hover:border-primary/30 dark:hover:border-primary/30') + ' transition-all" draggable="true" data-task-id="' + task.id + '" ondragstart="onTaskDragStart(event)" ondragend="onTaskDragEnd(event)" ondrop="onTaskDrop(event)" ondragover="onTaskDragOver(event)">' +
+        '<div class="flex items-start gap-3">' +
+          // 左侧：拖拽手柄 + 图钉
+          '<div class="flex flex-col items-center gap-1 pt-1">' +
+            '<span class="drag-handle cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400" title="拖拽排序"><i class="fas fa-grip-vertical" style="font-size:10px"></i></span>' +
+            '<span onclick="togglePin(' + task.id + ',this)" class="cursor-pointer ' + (task.is_pinned ? 'text-indigo-500' : 'text-gray-300 hover:text-indigo-400 dark:text-gray-600 dark:hover:text-indigo-400') + '" title="' + (task.is_pinned ? '取消置顶' : '置顶') + '"><i class="fas fa-thumbtack" style="font-size:10px"></i></span>' +
+          '</div>' +
+          // 中间：内容
+          '<div class="flex-1 min-w-0">' +
+            '<div class="flex items-center gap-2 mb-1">' +
+              '<span class="w-2 h-2 rounded-full shrink-0 ' + ({1:'bg-red-500',2:'bg-orange-500',3:'bg-yellow-500',4:'bg-green-500',5:'bg-gray-400'}[task.priority] || 'bg-gray-300') + '"></span>' +
+              '<h4 class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">' + escapeHtml(task.title) + '</h4>' +
+              (task.priority ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium ' + getPriorityStyle(task.priority) + '">P' + task.priority + '</span>' : '') +
+              '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium ' + getStatusStyle(task.status) + ' shrink-0">' + getStatusLabel(task.status) + '</span>' +
+            '</div>' +
+            '<div class="flex items-center gap-3 text-[11px] text-gray-400">' +
+              '<span><i class="fas fa-tag mr-0.5" style="font-size:8px"></i>' + (task.category||'general') + '</span>' +
+              '<span><i class="fas fa-shoe-prints mr-0.5" style="font-size:8px"></i>' + (task.steps_count||0) + '步</span>' +
+              (task.due_date ? '<span class="' + (isOverdue ? 'text-red-500 font-medium' : '') + '"><i class="fas fa-calendar mr-0.5" style="font-size:8px"></i>' + task.due_date + (isOverdue ? ' ⚠️' : '') + '</span>' : '') +
+            '</div>' +
+            (task.description ? '<p class="text-xs text-gray-500 dark:text-gray-400 mt-1.5 truncate">' + escapeHtml(task.description) + '</p>' : '') +
+          '</div>' +
+          // 右侧：操作
+          '<div class="flex flex-col gap-1 shrink-0">' +
+            '<button onclick="navigate(\'task-detail\', {id: ' + task.id + '})" class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-all touch-btn whitespace-nowrap">拆解</button>' +
+            (task.status !== 'completed' ? '<button onclick="quickMicroStart(' + task.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 transition-all touch-btn whitespace-nowrap">启动</button>' : '') +
+            '<button onclick="deleteTask(' + task.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-500 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-red-900/20 transition-all touch-btn"><i class="fas fa-trash" style="font-size:9px"></i></button>' +
+          '</div>' +
+        '</div></div>';
+    }).join('');
   } catch (err) {
     $('#tasks-list').innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTasks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+  }
+}
+
+function setTaskSort(sort) {
+  taskSortBy = sort;
+  // 高亮当前排序按钮
+  document.querySelectorAll('.sort-btn').forEach(function(btn) {
+    if (btn.dataset.sort === sort) {
+      btn.className = 'sort-btn px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium whitespace-nowrap';
+    } else {
+      btn.className = 'sort-btn px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap';
+    }
+  });
+  loadTasks();
+}
+
+// 置顶切换
+async function togglePin(taskId, el) {
+  var task = state.tasks.find(function(t) { return t.id === taskId; });
+  if (!task) return;
+  var newVal = task.is_pinned ? 0 : 1;
+  try {
+    await api.put('/api/tasks/' + taskId, { is_pinned: newVal });
+    task.is_pinned = newVal;
+    el.className = 'cursor-pointer ' + (newVal ? 'text-indigo-500' : 'text-gray-300 hover:text-indigo-400 dark:text-gray-600 dark:hover:text-indigo-400');
+    el.title = newVal ? '取消置顶' : '置顶';
+    loadTasks();
+  } catch(e) { showToast('操作失败', 'error'); }
+}
+
+// 拖拽排序
+var dragTaskId = null;
+
+function onTaskDragStart(e) {
+  dragTaskId = e.target.closest('[data-task-id]')?.dataset?.taskId;
+  e.target.closest('[data-task-id]')?.classList.add('opacity-40');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onTaskDragEnd(e) {
+  e.target.closest('[data-task-id]')?.classList.remove('opacity-40');
+  if (!dragTaskId) return;
+  // 获取新排序
+  var items = document.querySelectorAll('[data-task-id]');
+  var orders = [];
+  items.forEach(function(el, idx) {
+    var id = parseInt(el.dataset.taskId);
+    if (id) orders.push({ id: id, sort_order: idx });
+  });
+  api.post('/api/tasks/reorder', { orders: orders }).catch(function() {});
+  dragTaskId = null;
+}
+
+function onTaskDragOver(e) {
+  e.preventDefault();
+  var target = e.target.closest('[data-task-id]');
+  if (!target || target.dataset.taskId === dragTaskId) return;
+  var rect = target.getBoundingClientRect();
+  var mid = rect.top + rect.height / 2;
+  if (e.clientY < mid) {
+    target.parentNode.insertBefore(document.querySelector('[data-task-id="' + dragTaskId + '"]'), target);
+  } else {
+    target.parentNode.insertBefore(document.querySelector('[data-task-id="' + dragTaskId + '"]'), target.nextSibling);
   }
 }
 

@@ -1,0 +1,20 @@
+{
+  "envId": "zhouji-xxxxx",
+  "region": "ap-guangzhou",
+  "functions": [
+    {
+      "name": "api",
+      "timeout": 30,
+      "memory": 256,
+      "envVariables": {
+        "NODE_ENV": "production",
+        "JWT_SECRET": "请修改为随机字符串"
+      },
+      "public": true
+    }
+  ],
+  "static": {
+    "name": "zhouji-frontend",
+    "path": "../frontend"
+  }
+}

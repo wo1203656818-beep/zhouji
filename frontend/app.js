@@ -341,7 +341,9 @@ function saveTimerState() {
 
 if(typeof window.navigate!=="function"){
 var _navigateHash="";
-function navigate(page, params)  state.currentPage = page;
+function navigate(page, params) {
+  params = params || {};
+  state.currentPage = page;
   state.pageParams = params;
   var hashPath = '#/' + page;
   if (params.id) hashPath += '/' + params.id;
@@ -357,6 +359,17 @@ function navigate(page, params)  state.currentPage = page;
   window._isBackForward = false;
   render();
 }
+
+// 路由回退（从 window.renderXxx 函数自动映射）
+var routes = window.__routes || (function() {
+  var r = {};
+  var pages = ['login','dashboard','weekly','tasks','task-detail','micro-start','diary','pomodoro','emotion','stats','commitments','commitment-detail','time-blocks','lab','assistant','fate-killer','content-planner','settings'];
+  pages.forEach(function(p) {
+    var fnName = 'render' + p.split('-').map(function(s){return s.charAt(0).toUpperCase()+s.slice(1)}).join('');
+    if (typeof window[fnName] === 'function') r[p] = window[fnName];
+  });
+  return r;
+})();
 
 // 修复 Bug6: render 改为 async，正确 await 异步渲染函数
 async function render() {

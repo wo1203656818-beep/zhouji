@@ -27,7 +27,69 @@
 
     var html = '<div style="margin-bottom:24px;">';
     html += '<h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2"><i class="fas fa-calendar-alt text-indigo-500" style="font-size:18px;"></i> 内容日历</h2>';
-    html += '<p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">规划短视频和 X Thread 的发布时间</p></div>';
+    html += '<p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">规划短视频和 X Thread · 灵感→发布一览</p></div>';
+
+    // ====== 本周统计 ======
+    var now = new Date();
+    var weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    weekStart.setHours(0,0,0,0);
+    var weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    var weekInspirations = inspirations.filter(function(e) {
+      var t = new Date(e.created_at);
+      return t >= weekStart && t < weekEnd;
+    });
+    // 计算反命计划进度
+    var planProgress = 0;
+    try {
+      var planData = await api.get('/api/user-data?key=fate_killer_plan').catch(function(){return {data:null}});
+      if (planData && planData.data) {
+        var plan = JSON.parse(planData.data);
+        var total = 0, done = 0;
+        for (var w in (plan.weekChecklists||{})) {
+          for (var k in plan.weekChecklists[w]) {
+            total++;
+            if (plan.weekChecklists[w][k]) done++;
+          }
+        }
+        planProgress = total > 0 ? Math.round(done/total*100) : 0;
+      }
+    } catch(e){}
+
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;">';
+    html += miniStat('本周灵感', weekInspirations.length + '', '#d97706', c);
+    html += miniStat('本月灵感', inspirations.length + '', '#6366f1', c);
+    html += miniStat('计划进度', planProgress + '%', '#16a34a', c);
+    html += miniStat('距8月底', daysUntil(new Date(2026,7,27)) + '天', '#ea580c', c);
+    html += '</div>';
+
+    // ====== 每周复盘 ======
+    var videoCount = 0, threadCount = 0, copyCount = 0, otherCount = 0;
+    weekInspirations.forEach(function(e) {
+      var tags = (e.cbt_thought || '').toLowerCase();
+      if (tags.indexOf('video') > -1 || tags.indexOf('短视频') > -1) videoCount++;
+      else if (tags.indexOf('thread') > -1) threadCount++;
+      else if (tags.indexOf('文案') > -1 || tags.indexOf('copy') > -1) copyCount++;
+      else otherCount++;
+    });
+    html += '<div style="background:' + c.card + ';border:1px solid ' + c.border + ';border-radius:12px;padding:14px 18px;margin-bottom:16px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+    html += '<h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1.5"><i class="fas fa-sync-alt text-indigo-500" style="font-size:12px"></i> 本周复盘 (' + weekStart.toLocaleDateString('zh-CN') + ' - ' + new Date(weekEnd.getTime()-86400000).toLocaleDateString('zh-CN') + ')</h3>';
+    html += '<span class="text-xs text-gray-400">' + weekInspirations.length + ' 条灵感</span></div>';
+    // 内容类型分布
+    var totalTagged = videoCount + threadCount + copyCount + otherCount;
+    if (totalTagged > 0) {
+      html += '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;">';
+      if (videoCount > 0) html += '<span style="padding:3px 10px;border-radius:99px;background:#dbeafe;color:#1d40af;">🎬 短视频 ' + videoCount + '</span>';
+      if (threadCount > 0) html += '<span style="padding:3px 10px;border-radius:99px;background:#fef3c7;color:#92400e;">📝 Thread ' + threadCount + '</span>';
+      if (copyCount > 0) html += '<span style="padding:3px 10px;border-radius:99px;background:#fce7f3;color:#9d174d;">✍️ 文案 ' + copyCount + '</span>';
+      if (otherCount > 0) html += '<span style="padding:3px 10px;border-radius:99px;background:#f3f4f6;color:#374151;">📌 其他 ' + otherCount + '</span>';
+      html += '</div>';
+    } else {
+      html += '<p class="text-xs text-gray-400">记录灵感时打上标签，这里会显示本周的内容类型分布</p>';
+    }
+    html += '</div>';
 
     // 月度导航
     var monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -114,4 +176,16 @@
     if (currentMonth > 11) { currentMonth = 0; currentYear++; }
     window.navigate('content-planner');
   };
+
+  function miniStat(label, value, color, c) {
+    var isDark = document.documentElement.classList.contains('dark');
+    return '<div style="background:' + (isDark ? '#1e293b' : '#fff') + ';border:1px solid ' + c.border + ';border-radius:10px;padding:10px;text-align:center;">' +
+      '<div style="font-size:20px;font-weight:700;color:' + color + ';">' + value + '</div>' +
+      '<div style="font-size:11px;color:' + c.muted + ';margin-top:2px;">' + label + '</div></div>';
+  }
+
+  function daysUntil(target) {
+    var diff = target - new Date();
+    return Math.max(0, Math.ceil(diff / (24*60*60*1000)));
+  }
 })();

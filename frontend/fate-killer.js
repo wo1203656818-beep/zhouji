@@ -35,8 +35,17 @@
         headers: { 'Authorization': 'Bearer ' + token }
       });
       var data = await res.json();
-      if (data && data.success && data.data) return JSON.parse(data.data);
-    } catch(e) {}
+      if (data && data.success && data.data) {
+        // 同步到离线存储
+        if (window.offlinePut) window.offlinePut('fk_' + CLOUD_KEY, JSON.parse(data.data));
+        return JSON.parse(data.data);
+      }
+    } catch(e) { /* offline fallback */ }
+    // 离线时从 IndexedDB 读取
+    if (window.offlineGet) {
+      var off = await window.offlineGet('fk_' + CLOUD_KEY);
+      if (off) return off;
+    }
     return null;
   }
   async function cloudSave(d) {
@@ -49,7 +58,15 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ key: CLOUD_KEY, value: JSON.stringify(d) })
       });
-    } catch(e) {}
+      // 同步到离线存储
+      if (window.offlinePut) window.offlinePut('fk_' + CLOUD_KEY, d);
+    } catch(e) {
+      // 网络失败，存入离线队列
+      if (window.offlineEnqueue) {
+        window.offlineEnqueue('POST', '/api/user-data', { key: CLOUD_KEY, value: JSON.stringify(d) });
+        window.offlinePut('fk_' + CLOUD_KEY, d);
+      }
+    }
   }
   function localLoad() {
     try { var r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch(e) {}

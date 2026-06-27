@@ -1,6 +1,20 @@
 
-// ==================== 周迹前端 v2.0 - 全面优化版 ====================
-// 新增：深色模式、番茄钟、数据导入、任务模板、键盘快捷键、计时器持久化
+// ==================== 周迹前端 v2.4 - 核心模块已拆分为 core/ ====================
+// 工具函数 → core/utils.js   |   API封装 → core/api.js   |   路由导航 → core/router.js
+// 以下为各页面渲染函数，保持向后兼容
+
+// 若核心模块未加载，提供备用定义
+if (typeof window.safeStorage === 'undefined') {
+  window.safeStorage = { get:function(k){try{return localStorage.getItem(k)}catch(e){return null}}, set:function(k,v){try{localStorage.setItem(k,v);return true}catch(e){return false}}, remove:function(k){try{localStorage.removeItem(k)}catch(e){}} };
+}
+if (typeof window.api === 'undefined') {
+  window.api = { get:function(){return Promise.resolve({})}, post:function(){return Promise.resolve({})}, put:function(){return Promise.resolve({})}, del:function(){return Promise.resolve({})} };
+}
+if (typeof window.$ === 'undefined') {
+  window.$ = function(s){return document.querySelector(s)};
+  window.$$ = function(s){return document.querySelectorAll(s)};
+  window.el = function(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html)e.innerHTML=html;return e};
+}
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -325,28 +339,9 @@ function saveTimerState() {
   }
 }
 
-// 路由
-const routes = {
-  'login': renderLogin, 'dashboard': renderDashboard,
-  'weekly': function() { return (window.renderWeekly || function(){return el('div','<p class="text-center py-12">周视图加载中...</p>');}).apply(this, arguments); },
-  'tasks': renderTasks, 'task-detail': renderTaskDetail,
-  'micro-start': renderMicroStart,
-  'diary': function() { return (window.renderDiary || renderDiary).apply(this, arguments); },
-  'pomodoro': renderPomodoro,
-  'emotion': renderEmotion,
-  'stats': function() { return (window.renderStats || renderStats).apply(this, arguments); },
-  'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
-  'time-blocks': renderTimeBlocks, 'lab': renderLab,
-  'assistant': function() { return window.renderAssistant.apply(this, arguments); },
-  'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
-  'settings': renderSettings
-};
-
-// 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
-var _navigateHash = '';
-
-function navigate(page, params = {}) {
-  state.currentPage = page;
+if(typeof window.navigate!=="function"){
+var _navigateHash="";
+function navigate(page, params)  state.currentPage = page;
   state.pageParams = params;
   var hashPath = '#/' + page;
   if (params.id) hashPath += '/' + params.id;

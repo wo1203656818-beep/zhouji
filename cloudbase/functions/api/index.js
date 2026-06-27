@@ -1,695 +1,451 @@
 // ═══════════════════════════════════════════════════════
-// 周迹 - CloudBase 云函数 API（免费版部署方案）
-// 部署：cloudbase functions:deploy api
+// 周迹 - CloudBase HTTP 云函数（无框架，原生实现）
+// 环境ID: buyibandewo-d4gyvn0db0f577e93
 // ═══════════════════════════════════════════════════════
 
-const express = require('express');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
-// ═══ 配置 ═══
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-to-random-32-chars';
-const JWT_EXPIRES = '7d';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://your-frontend.pages.dev';
+const JWT_SECRET = process.env.JWT_SECRET || 'zhouji-cb-jwt-2026-secure-key-8x9k2';
+const CORS_ORIGIN = '*';
 
-// ═══ 初始化 CloudBase ═══
-// CloudBase Cloud Function 环境自带 cloudbase 对象
+// ═══ CloudBase SDK ═══
 const cloudbase = require('@cloudbase/node-sdk');
 const app_cb = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV });
 const db = app_cb.database();
 const _ = db.command;
 
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// CORS
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
-
 // ═══ 工具函数 ═══
-function sanitize(str, maxLen = 500) {
+function sanitize(str, maxLen) {
   if (!str) return '';
-  str = String(str).replace(/[<>]/g, '').substring(0, maxLen);
-  return str;
+  maxLen = maxLen || 500;
+  return String(str).replace(/[<>]/g, '').substring(0, maxLen);
 }
 
-function jsonOk(data, status = 200) {
-  return res => res.status(status).json(data);
+function jsonResp(code, data) {
+  return {
+    statusCode: code,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': CORS_ORIGIN,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+    },
+    body: JSON.stringify(data)
+  };
 }
 
-// ═══ 认证中间件 ═══
-async function authMw(req, res, next) {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: '请先登录' });
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
-    next();
-  } catch(e) {
-    return res.status(401).json({ error: '登录已过期，请重新登录' });
-  }
-}
-
-// 可选认证（仪表盘config-status）
-function optionalAuth(req, res, next) {
-  try {
-    const token = (req.headers.authorization || '').replace('Bearer ', '');
-    if (token) {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      req.userId = decoded.userId;
-    }
-  } catch(e) {}
-  next();
-}
+function ok(data) { return jsonResp(200, data); }
+function err(code, msg) { return jsonResp(code, { error: msg }); }
 
 // ═══ 数据库辅助 ═══
 const coll = (name) => db.collection(name);
 
-// 取单条
-async function findOne(collection, where) {
-  const r = await coll(collection).where(where).limit(1).get();
+async function findOne(col, where) {
+  const r = await coll(col).where(where).limit(1).get();
   return (r.data && r.data.length) ? r.data[0] : null;
 }
 
-// 取列表
-async function findList(collection, where, orderBy = 'created_at', order = 'desc', limit = 100) {
-  const r = await coll(collection).where(where || {}).orderBy(orderBy, order).limit(limit).get();
+async function findList(col, where, orderBy, order, limit) {
+  const r = await coll(col).where(where || {}).orderBy(orderBy || 'created_at', order || 'desc').limit(limit || 200).get();
   return r.data || [];
 }
 
-// 插入
-async function insert(collection, data) {
+async function insert(col, data) {
   data.created_at = data.created_at || new Date().toISOString();
-  const r = await coll(collection).add(data);
+  const r = await coll(col).add(data);
   return r.id;
 }
 
-// 更新
-async function updateOne(collection, where, data) {
-  data.updated_at = new Date().toISOString();
-  // CloudBase where更新需先查后改
-  const r = await coll(collection).where(where).limit(1).get();
-  if (!r.data.length) return 0;
-  await coll(collection).doc(r.data[0]._id).update(data);
-  return 1;
-}
-
-// 删除
-async function removeOne(collection, where) {
-  const r = await coll(collection).where(where).limit(1).get();
-  if (!r.data.length) return 0;
-  await coll(collection).doc(r.data[0]._id).remove();
-  return 1;
-}
-
-async function removeMany(collection, where) {
-  const r = await coll(collection).where(where).get();
-  for (const doc of r.data) {
-    await coll(collection).doc(doc._id).remove();
-  }
+async function removeMany(col, where) {
+  const r = await coll(col).where(where).get();
+  for (const d of r.data) await coll(col).doc(d._id).remove();
   return r.data.length;
 }
 
-// 聚合查询 - count
-async function countDocs(collection, where) {
-  const r = await coll(collection).where(where || {}).count();
-  return r.total || 0;
-}
-
-// ========== 健康检查 ==========
-app.get('/api/health', (req, res) => res.json({ success: true }));
-
-// ========== 用户认证 ==========
-const crypto = require('crypto');
 function hashPwd(pwd, salt) {
   return crypto.createHash('sha256').update(pwd + salt).digest('hex');
 }
 
-app.post('/api/auth/register', async (req, res) => {
+// ═══ 认证 ═══
+function authMiddleware(event) {
+  const token = (event.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return null;
   try {
-    const { username, password } = req.body;
-    if (!username || !password || username.length > 30) return res.status(400).json({ error: '用户名和密码不能为空' });
-    const exist = await findOne('users', { username });
-    if (exist) return res.status(400).json({ error: '用户名已存在' });
-    const salt = crypto.randomBytes(16).toString('hex');
-    const passHash = hashPwd(password, salt);
-    const uid = await insert('users', { username, password: passHash, salt, created_at: new Date().toISOString() });
-    const token = jwt.sign({ userId: uid, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
-    res.json({ success: true, token, userId: uid, username });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    const d = jwt.verify(token, JWT_SECRET);
+    return d.userId;
+  } catch(e) { return null; }
+}
 
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    const user = await findOne('users', { username });
-    if (!user) return res.status(401).json({ error: '用户名或密码错误' });
-    if (hashPwd(password, user.salt) !== user.password) return res.status(401).json({ error: '用户名或密码错误' });
-    const token = jwt.sign({ userId: user._id, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
-    res.json({ success: true, token, userId: user._id, username, preferences: user.preferences || {} });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+// ═══ 路由映射 ═══
+async function route(event) {
+  const path = event.path || '';
+  const method = event.httpMethod || 'GET';
 
-// ========== 任务管理 ==========
-app.get('/api/tasks', authMw, async (req, res) => {
+  // CORS
+  if (method === 'OPTIONS') return jsonResp(200, {});
+
+  // 解析 body
+  let body = {};
   try {
-    const { status, search } = req.query;
-    let where = { user_id: req.userId };
-    if (status) where.status = status;
-    const tasks = await findList('tasks', where, 'sort_order', 'asc', 200);
-    // 搜索过滤
-    let result = tasks;
+    body = event.body ? (typeof event.body === 'string' ? JSON.parse(event.body) : event.body) : {};
+  } catch(e) {}
+
+  const params = {};
+  // 路径参数 (简化实现)
+  const userId = authMiddleware(event);
+
+  // ═══ 健康检查 ═══
+  if (path === '/api/health') return ok({ success: true });
+
+  // ═══ 注册（无需登录）═══
+  if (path === '/api/auth/register' && method === 'POST') {
+    var un = sanitize(body.username, 30);
+    var pw = body.password || '';
+    if (!un || !pw) return err(400, '用户名和密码不能为空');
+    var exist = await findOne('users', { username: un });
+    if (exist) return err(400, '用户名已存在');
+    var salt = crypto.randomBytes(16).toString('hex');
+    var ph = hashPwd(pw, salt);
+    var uid = await insert('users', { username: un, password: ph, salt });
+    var token = jwt.sign({ userId: uid, username: un }, JWT_SECRET, { expiresIn: '7d' });
+    return ok({ success: true, token, userId: uid, username: un });
+  }
+
+  // ═══ 登录（无需登录）═══
+  if (path === '/api/auth/login' && method === 'POST') {
+    var user = await findOne('users', { username: body.username });
+    if (!user) return err(401, '用户名或密码错误');
+    if (hashPwd(body.password || '', user.salt) !== user.password) return err(401, '用户名或密码错误');
+    var token = jwt.sign({ userId: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    return ok({ success: true, token, userId: user._id, username: user.username, preferences: user.preferences || {} });
+  }
+
+  // ═══ 以下路由需要登录 ═══
+  if (!userId) return err(401, '请先登录');
+
+  // ========== 任务 ==========
+  if (path === '/api/tasks' && method === 'GET') {
+    var where = { user_id: userId };
+    if (body.status || event.queryStringParameters?.status) {
+      where.status = body.status || event.queryStringParameters?.status;
+    }
+    var tasks = await findList('tasks', where, 'sort_order', 'asc', 300);
+    var search = body.search || event.queryStringParameters?.search;
     if (search) {
-      const kw = search.toLowerCase();
-      result = tasks.filter(t => (t.title||'').toLowerCase().includes(kw) || (t.description||'').toLowerCase().includes(kw));
+      var kw = search.toLowerCase();
+      tasks = tasks.filter(t => (t.title||'').toLowerCase().includes(kw) || (t.description||'').toLowerCase().includes(kw));
     }
-    res.json({ success: true, tasks: result });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true, tasks });
+  }
 
-app.post('/api/tasks', authMw, async (req, res) => {
-  try {
-    const { title, description, category, difficulty, priority, due_date } = req.body;
-    if (!title) return res.status(400).json({ error: '标题不能为空' });
-    const data = {
-      user_id: req.userId,
-      title: sanitize(title, 200),
-      description: sanitize(description, 1000),
-      category: sanitize(category, 50) || 'general',
-      difficulty: Math.min(5, Math.max(1, parseInt(difficulty) || 3)),
-      priority: Math.min(5, Math.max(1, parseInt(priority) || 3)),
-      due_date: due_date || null,
-      status: 'pending',
-      is_pinned: 0,
-      sort_order: 0,
-      source: '',
-      created_at: new Date().toISOString()
+  if (path === '/api/tasks' && method === 'POST') {
+    if (!body.title) return err(400, '标题不能为空');
+    var data = {
+      user_id: userId,
+      title: sanitize(body.title, 200),
+      description: sanitize(body.description, 1000),
+      category: sanitize(body.category, 50) || 'general',
+      difficulty: Math.min(5, Math.max(1, parseInt(body.difficulty) || 3)),
+      priority: Math.min(5, Math.max(1, parseInt(body.priority) || 3)),
+      due_date: body.due_date || null,
+      status: 'pending', is_pinned: 0, sort_order: 0, source: ''
     };
-    const id = await insert('tasks', data);
-    // 更新每日统计
-    const today = new Date().toISOString().split('T')[0];
-    const stat = await findOne('daily_stats', { user_id: req.userId, stat_date: today });
-    if (stat) {
-      await coll('daily_stats').doc(stat._id).update({ tasks_created: _.inc(1) });
-    } else {
-      await insert('daily_stats', { user_id: req.userId, stat_date: today, tasks_created: 1, tasks_started: 0, tasks_completed: 0, micro_starts_count: 0, procrastination_count: 0, pomodoro_count: 0 });
-    }
-    res.json({ success: true, taskId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    var tid = await insert('tasks', data);
+    // 更新统计
+    var today = new Date().toISOString().split('T')[0];
+    var stat = await findOne('daily_stats', { user_id: userId, stat_date: today });
+    if (stat) await coll('daily_stats').doc(stat._id).update({ tasks_created: _.inc(1) });
+    else await insert('daily_stats', { user_id: userId, stat_date: today, tasks_created: 1 });
+    return ok({ success: true, taskId: tid });
+  }
 
-app.put('/api/tasks/:id', authMw, async (req, res) => {
-  try {
-    const { title, description, status, difficulty, priority, due_date, is_pinned, sort_order } = req.body;
-    const task = await findOne('tasks', { _id: req.params.id, user_id: req.userId });
-    if (!task) return res.status(404).json({ error: '任务不存在' });
-    const updateData = {};
-    if (title !== undefined) updateData.title = sanitize(title, 200);
-    if (description !== undefined) updateData.description = sanitize(description, 1000);
-    if (status !== undefined) updateData.status = status;
-    if (difficulty !== undefined) updateData.difficulty = parseInt(difficulty);
-    if (priority !== undefined) updateData.priority = parseInt(priority);
-    if (due_date !== undefined) updateData.due_date = due_date;
-    if (is_pinned !== undefined) updateData.is_pinned = is_pinned ? 1 : 0;
-    if (sort_order !== undefined) updateData.sort_order = parseInt(sort_order) || 0;
-    
-    if (Object.keys(updateData).length === 0) return res.json({ success: true });
-    updateData.updated_at = new Date().toISOString();
-    await coll('tasks').doc(task._id).update(updateData);
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+  // PUT /api/tasks/:id
+  if (path.startsWith('/api/tasks/') && !path.includes('/steps') && !path.includes('/reorder') && method === 'PUT') {
+    var taskId = path.split('/')[3];
+    var task = await findOne('tasks', { _id: taskId, user_id: userId });
+    if (!task) return err(404, '任务不存在');
+    var upd = {};
+    if (body.title !== undefined) upd.title = sanitize(body.title, 200);
+    if (body.description !== undefined) upd.description = sanitize(body.description, 1000);
+    if (body.status !== undefined) upd.status = body.status;
+    if (body.difficulty !== undefined) upd.difficulty = parseInt(body.difficulty);
+    if (body.priority !== undefined) upd.priority = parseInt(body.priority);
+    if (body.due_date !== undefined) upd.due_date = body.due_date;
+    if (body.is_pinned !== undefined) upd.is_pinned = body.is_pinned ? 1 : 0;
+    if (body.sort_order !== undefined) upd.sort_order = parseInt(body.sort_order) || 0;
+    if (Object.keys(upd).length === 0) return ok({ success: true });
+    upd.updated_at = new Date().toISOString();
+    await coll('tasks').doc(task._id).update(upd);
+    return ok({ success: true });
+  }
 
-app.delete('/api/tasks/:id', authMw, async (req, res) => {
-  try {
-    const taskId = req.params.id;
-    const task = await findOne('tasks', { _id: taskId, user_id: req.userId });
-    if (!task) return res.status(404).json({ error: '任务不存在' });
+  // DELETE /api/tasks/:id
+  if (path.startsWith('/api/tasks/') && !path.includes('/steps') && !path.includes('/reorder') && method === 'DELETE') {
+    var taskId = path.split('/')[3];
+    var task = await findOne('tasks', { _id: taskId, user_id: userId });
+    if (!task) return err(404, '任务不存在');
     await removeMany('task_steps', { task_id: taskId });
     await removeMany('micro_starts', { task_id: taskId });
     await removeMany('procrastination_logs', { task_id: taskId });
     await removeMany('commitments', { task_id: taskId });
     await coll('tasks').doc(task._id).remove();
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true });
+  }
 
-// 拖拽重排
-app.post('/api/tasks/reorder', authMw, async (req, res) => {
-  try {
-    const { orders } = req.body;
-    if (!orders || !Array.isArray(orders)) return res.status(400).json({ error: '参数无效' });
-    for (const o of orders) {
+  // ========== 拖拽重排 ==========
+  if (path === '/api/tasks/reorder' && method === 'POST') {
+    if (!body.orders || !Array.isArray(body.orders)) return err(400, '参数无效');
+    for (var o of body.orders) {
       if (o.id && o.sort_order != null) {
-        const task = await findOne('tasks', { _id: o.id, user_id: req.userId });
-        if (task) await coll('tasks').doc(task._id).update({ sort_order: parseInt(o.sort_order) || 0 });
+        var t = await findOne('tasks', { _id: o.id, user_id: userId });
+        if (t) await coll('tasks').doc(t._id).update({ sort_order: parseInt(o.sort_order) || 0 });
       }
     }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true });
+  }
 
-// ========== 任务步骤 ==========
-app.get('/api/tasks/:id/steps', authMw, async (req, res) => {
-  const steps = await findList('task_steps', { task_id: req.params.id }, 'created_at', 'asc', 50);
-  res.json({ success: true, steps });
-});
+  // ========== 任务步骤 ==========
+  if (path.startsWith('/api/tasks/') && path.endsWith('/steps') && method === 'GET') {
+    var tid = path.split('/')[3];
+    var steps = await findList('task_steps', { task_id: tid }, 'created_at', 'asc', 50);
+    return ok({ success: true, steps });
+  }
 
-app.post('/api/tasks/:id/steps', authMw, async (req, res) => {
-  try {
-    const { title, planned_duration } = req.body;
-    if (!title) return res.status(400).json({ error: '步骤标题不能为空' });
-    const id = await insert('task_steps', {
-      task_id: req.params.id,
-      user_id: req.userId,
-      title: sanitize(title, 200),
-      planned_duration: parseInt(planned_duration) || 2,
+  if (path.startsWith('/api/tasks/') && path.endsWith('/steps') && method === 'POST') {
+    var tid = path.split('/')[3];
+    if (!body.title) return err(400, '步骤标题不能为空');
+    var sid = await insert('task_steps', {
+      task_id: tid, user_id: userId,
+      title: sanitize(body.title, 200),
+      planned_duration: parseInt(body.planned_duration) || 2,
       status: 'pending'
     });
-    res.json({ success: true, stepId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true, stepId: sid });
+  }
 
-app.put('/api/steps/:id', authMw, async (req, res) => {
-  try {
-    const step = await findOne('task_steps', { _id: req.params.id });
-    if (!step) return res.status(404).json({ error: '步骤不存在' });
-    const data = {};
-    if (req.body.status !== undefined) data.status = req.body.status;
-    if (req.body.title !== undefined) data.title = sanitize(req.body.title, 200);
-    if (req.body.planned_duration !== undefined) data.planned_duration = parseInt(req.body.planned_duration);
-    if (Object.keys(data).length === 0) return res.json({ success: true });
-    await coll('task_steps').doc(step._id).update(data);
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+  // PUT /api/steps/:id
+  if (path.startsWith('/api/steps/') && method === 'PUT') {
+    var sid = path.split('/')[3];
+    var step = await findOne('task_steps', { _id: sid });
+    if (!step) return err(404, '步骤不存在');
+    var upd = {};
+    if (body.status !== undefined) upd.status = body.status;
+    if (body.title !== undefined) upd.title = sanitize(body.title, 200);
+    if (body.planned_duration !== undefined) upd.planned_duration = parseInt(body.planned_duration);
+    if (Object.keys(upd).length > 0) await coll('task_steps').doc(step._id).update(upd);
+    return ok({ success: true });
+  }
 
-// ========== 微启动 ==========
-app.post('/api/micro-starts', authMw, async (req, res) => {
-  try {
-    const { task_id, step_id, planned_duration, actual_duration, continued_after_contract } = req.body;
-    const id = await insert('micro_starts', {
-      user_id: req.userId,
-      task_id: task_id || null,
-      step_id: step_id || null,
-      planned_duration: parseInt(planned_duration) || 2,
-      actual_duration: parseInt(actual_duration) || 0,
-      continued_after_contract: continued_after_contract ? 1 : 0,
+  // ========== 微启动 ==========
+  if (path === '/api/micro-starts' && method === 'POST') {
+    var mid = await insert('micro_starts', {
+      user_id: userId,
+      task_id: body.task_id || null,
+      step_id: body.step_id || null,
+      planned_duration: parseInt(body.planned_duration) || 2,
+      actual_duration: parseInt(body.actual_duration) || 0,
+      continued_after_contract: body.continued_after_contract ? 1 : 0,
       status: 'completed'
     });
-    if (task_id) {
-      const task = await findOne('tasks', { _id: task_id, user_id: req.userId });
-      if (task && task.status !== 'completed') {
-        await coll('tasks').doc(task._id).update({ status: 'in_progress' });
-      }
+    if (body.task_id) {
+      var task = await findOne('tasks', { _id: body.task_id, user_id: userId });
+      if (task && task.status !== 'completed') await coll('tasks').doc(task._id).update({ status: 'in_progress' });
     }
-    // 更新统计
-    const today = new Date().toISOString().split('T')[0];
-    const stat = await findOne('daily_stats', { user_id: req.userId, stat_date: today });
-    if (stat) {
-      await coll('daily_stats').doc(stat._id).update({ micro_starts_count: _.inc(1) });
-    } else {
-      await insert('daily_stats', { user_id: req.userId, stat_date: today, tasks_created: 0, tasks_started: 0, tasks_completed: 0, micro_starts_count: 1, procrastination_count: 0, pomodoro_count: 0 });
-    }
-    res.json({ success: true, microStartId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    var today = new Date().toISOString().split('T')[0];
+    var stat = await findOne('daily_stats', { user_id: userId, stat_date: today });
+    if (stat) await coll('daily_stats').doc(stat._id).update({ micro_starts_count: _.inc(1) });
+    else await insert('daily_stats', { user_id: userId, stat_date: today, micro_starts_count: 1 });
+    return ok({ success: true, microStartId: mid });
+  }
 
-app.get('/api/micro-starts', authMw, async (req, res) => {
-  try {
-    const microStarts = await findList('micro_starts', { user_id: req.userId }, 'created_at', 'desc', 100);
-    // 补充任务标题 - CloudBase document DB 无 JOIN，需分别查询
-    for (const ms of microStarts) {
+  if (path === '/api/micro-starts' && method === 'GET') {
+    var msList = await findList('micro_starts', { user_id: userId }, 'created_at', 'desc', 100);
+    for (var i = 0; i < msList.length; i++) {
+      var ms = msList[i];
       if (ms.task_id) {
-        const task = await findOne('tasks', { _id: ms.task_id });
-        ms.task_title = task ? task.title : null;
-        ms.task_due_date = task ? task.due_date : null;
-        ms.task_desc = task ? task.description : null;
+        var t = await findOne('tasks', { _id: ms.task_id });
+        ms.task_title = t ? t.title : null;
+        ms.task_due_date = t ? t.due_date : null;
       }
       if (ms.step_id) {
-        const step = await findOne('task_steps', { _id: ms.step_id });
-        ms.step_title = step ? step.title : null;
+        var s = await findOne('task_steps', { _id: ms.step_id });
+        ms.step_title = s ? s.title : null;
       }
     }
-    res.json({ success: true, microStarts });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ========== 情绪记录 ==========
-app.post('/api/emotions', authMw, async (req, res) => {
-  try {
-    const { emotion_type, energy_level, trigger_task, cbt_response } = req.body;
-    if (!emotion_type) return res.status(400).json({ error: '请选择情绪' });
-    const id = await insert('emotions', {
-      user_id: req.userId,
-      emotion_type: sanitize(emotion_type, 20),
-      energy_level: parseInt(energy_level) || 3,
-      trigger_task: sanitize(trigger_task, 200),
-      cbt_response: sanitize(cbt_response, 2000)
-    });
-    res.json({ success: true, emotionId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/emotions', authMw, async (req, res) => {
-  const emotions = await findList('emotions', { user_id: req.userId }, 'created_at', 'desc', 50);
-  res.json({ success: true, emotions });
-});
-
-// ========== 番茄钟 ==========
-app.post('/api/pomodoro', authMw, async (req, res) => {
-  try {
-    const { task_id, step_id, duration, completed } = req.body;
-    const id = await insert('pomodoro_sessions', {
-      user_id: req.userId,
-      task_id: task_id || null,
-      step_id: step_id || null,
-      duration: parseInt(duration) || 25,
-      completed: completed ? 1 : 0
-    });
-    // 更新统计
-    const today = new Date().toISOString().split('T')[0];
-    const stat = await findOne('daily_stats', { user_id: req.userId, stat_date: today });
-    if (stat) {
-      await coll('daily_stats').doc(stat._id).update({ pomodoro_count: _.inc(1) });
-    }
-    res.json({ success: true, sessionId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/pomodoro', authMw, async (req, res) => {
-  const sessions = await findList('pomodoro_sessions', { user_id: req.userId }, 'created_at', 'desc', 100);
-  for (const s of sessions) {
-    if (s.task_id) {
-      const task = await findOne('tasks', { _id: s.task_id });
-      s.task_title = task ? task.title : null;
-      s.task_due_date = task ? task.due_date : null;
-    }
+    return ok({ success: true, microStarts: msList });
   }
-  res.json({ success: true, sessions });
-});
 
-// ========== 拖延日志 ==========
-app.post('/api/procrastination-logs', authMw, async (req, res) => {
-  try {
-    const { task_id, reason, distraction_type, duration_wasted } = req.body;
-    const id = await insert('procrastination_logs', {
-      user_id: req.userId,
-      task_id: task_id || null,
-      reason: sanitize(reason, 200),
-      distraction_type: sanitize(distraction_type, 50),
-      duration_wasted: parseInt(duration_wasted) || 0
+  // ========== 情绪 ==========
+  if (path === '/api/emotions' && method === 'POST') {
+    if (!body.emotion_type) return err(400, '请选择情绪');
+    var eid = await insert('emotions', {
+      user_id: userId,
+      emotion_type: sanitize(body.emotion_type, 20),
+      energy_level: parseInt(body.energy_level) || 3,
+      trigger_task: sanitize(body.trigger_task, 200),
+      cbt_response: sanitize(body.cbt_response, 2000)
     });
-    const today = new Date().toISOString().split('T')[0];
-    const stat = await findOne('daily_stats', { user_id: req.userId, stat_date: today });
-    if (stat) {
-      await coll('daily_stats').doc(stat._id).update({ procrastination_count: _.inc(1) });
+    return ok({ success: true, emotionId: eid });
+  }
+
+  if (path === '/api/emotions' && method === 'GET') {
+    var ems = await findList('emotions', { user_id: userId }, 'created_at', 'desc', 50);
+    return ok({ success: true, emotions: ems });
+  }
+
+  // ========== 番茄钟 ==========
+  if (path === '/api/pomodoro' && method === 'POST') {
+    var pid = await insert('pomodoro_sessions', {
+      user_id: userId,
+      task_id: body.task_id || null,
+      step_id: body.step_id || null,
+      duration: parseInt(body.duration) || 25,
+      completed: body.completed ? 1 : 0
+    });
+    var today = new Date().toISOString().split('T')[0];
+    var stat = await findOne('daily_stats', { user_id: userId, stat_date: today });
+    if (stat) await coll('daily_stats').doc(stat._id).update({ pomodoro_count: _.inc(1) });
+    return ok({ success: true, sessionId: pid });
+  }
+
+  if (path === '/api/pomodoro' && method === 'GET') {
+    var sessions = await findList('pomodoro_sessions', { user_id: userId }, 'created_at', 'desc', 100);
+    for (var i = 0; i < sessions.length; i++) {
+      if (sessions[i].task_id) {
+        var t = await findOne('tasks', { _id: sessions[i].task_id });
+        sessions[i].task_title = t ? t.title : null;
+        sessions[i].task_due_date = t ? t.due_date : null;
+      }
     }
-    res.json({ success: true, logId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true, sessions });
+  }
 
-// ========== 日记 ==========
-app.post('/api/diary', authMw, async (req, res) => {
-  try {
-    const { title, content, mood, weather, location, is_private, template_type, cbt_thought, cbt_emotion, cbt_behavior, cbt_reframe } = req.body;
-    const id = await insert('diary_entries', {
-      user_id: req.userId,
-      title: sanitize(title, 200) || '无标题',
-      content: sanitize(content, 5000),
-      mood: sanitize(mood, 20) || 'neutral',
-      weather: sanitize(weather, 50) || '',
-      location: sanitize(location, 100) || '',
-      is_private: is_private !== false ? 1 : 0,
-      template_type: sanitize(template_type, 20) || 'free',
-      cbt_thought: sanitize(cbt_thought, 2000),
-      cbt_emotion: sanitize(cbt_emotion, 1000),
-      cbt_behavior: sanitize(cbt_behavior, 2000),
-      cbt_reframe: sanitize(cbt_reframe, 2000)
+  // ========== 拖延日志 ==========
+  if (path === '/api/procrastination-logs' && method === 'POST') {
+    var lid = await insert('procrastination_logs', {
+      user_id: userId, task_id: body.task_id || null,
+      reason: sanitize(body.reason, 200),
+      distraction_type: sanitize(body.distraction_type, 50),
+      duration_wasted: parseInt(body.duration_wasted) || 0
     });
-    res.json({ success: true, entryId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    var today = new Date().toISOString().split('T')[0];
+    var stat = await findOne('daily_stats', { user_id: userId, stat_date: today });
+    if (stat) await coll('daily_stats').doc(stat._id).update({ procrastination_count: _.inc(1) });
+    return ok({ success: true, logId: lid });
+  }
 
-app.get('/api/diary', authMw, async (req, res) => {
-  const entries = await findList('diary_entries', { user_id: req.userId }, 'created_at', 'desc', 50);
-  res.json({ success: true, entries });
-});
+  // ========== 日记 ==========
+  if (path === '/api/diary' && method === 'POST') {
+    var did = await insert('diary_entries', {
+      user_id: userId,
+      title: sanitize(body.title, 200) || '无标题',
+      content: sanitize(body.content, 5000),
+      mood: sanitize(body.mood, 20) || 'neutral',
+      template_type: sanitize(body.template_type, 20) || 'free',
+      is_private: body.is_private !== false ? 1 : 0,
+      cbt_thought: sanitize(body.cbt_thought, 2000),
+      cbt_reframe: sanitize(body.cbt_reframe, 2000)
+    });
+    return ok({ success: true, entryId: did });
+  }
 
-// ========== 承诺管理 ==========
-app.post('/api/commitments', authMw, async (req, res) => {
-  try {
-    const { task_id, content, deadline, witness_name } = req.body;
-    if (!content) return res.status(400).json({ error: '承诺内容不能为空' });
-    const id = await insert('commitments', {
-      user_id: req.userId,
-      task_id: task_id || null,
-      content: sanitize(content, 500),
-      deadline: deadline || null,
-      witness_name: sanitize(witness_name, 50),
+  if (path === '/api/diary' && method === 'GET') {
+    var entries = await findList('diary_entries', { user_id: userId }, 'created_at', 'desc', 50);
+    return ok({ success: true, entries });
+  }
+
+  // ========== 承诺 ==========
+  if (path === '/api/commitments' && method === 'POST') {
+    if (!body.content) return err(400, '承诺内容不能为空');
+    var cid = await insert('commitments', {
+      user_id: userId, task_id: body.task_id || null,
+      content: sanitize(body.content, 500),
+      deadline: body.deadline || null,
+      witness_name: sanitize(body.witness_name, 50),
       status: 'active'
     });
-    res.json({ success: true, commitmentId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/commitments', authMw, async (req, res) => {
-  const commitments = await findList('commitments', { user_id: req.userId }, 'created_at', 'desc', 50);
-  res.json({ success: true, commitments });
-});
-
-// ========== 时间块 ==========
-app.post('/api/time-blocks', authMw, async (req, res) => {
-  try {
-    const { task_id, block_date, start_time, end_time, block_type, energy_level } = req.body;
-    const id = await insert('time_blocks', {
-      user_id: req.userId,
-      task_id: task_id || null,
-      block_date: block_date || new Date().toISOString().split('T')[0],
-      start_time: start_time || '09:00',
-      end_time: end_time || '10:00',
-      block_type: sanitize(block_type, 20) || 'work',
-      energy_level: parseInt(energy_level) || 3
-    });
-    res.json({ success: true, blockId: id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/time-blocks', authMw, async (req, res) => {
-  const { date } = req.query;
-  const where = { user_id: req.userId };
-  if (date) where.block_date = date;
-  const blocks = await findList('time_blocks', where, 'start_time', 'asc', 200);
-  for (const b of blocks) {
-    if (b.task_id) {
-      const task = await findOne('tasks', { _id: b.task_id });
-      b.task_title = task ? task.title : null;
-      b.task_status = task ? task.status : null;
-    }
+    return ok({ success: true, commitmentId: cid });
   }
-  res.json({ success: true, blocks });
-});
 
-// ========== 网易云音乐搜索 ==========
-app.get('/api/music/search', async (req, res) => {
-  const { keyword } = req.query;
-  if (!keyword) return res.status(400).json({ error: '请输入关键词' });
-  try {
-    const resp = await fetch(`https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=20&offset=0`, {
-      headers: { 'Referer': 'https://music.163.com/', 'User-Agent': 'Mozilla/5.0' }
+  if (path === '/api/commitments' && method === 'GET') {
+    var cmts = await findList('commitments', { user_id: userId }, 'created_at', 'desc', 50);
+    return ok({ success: true, commitments: cmts });
+  }
+
+  // ========== 时间块 ==========
+  if (path === '/api/time-blocks' && method === 'POST') {
+    var bid = await insert('time_blocks', {
+      user_id: userId, task_id: body.task_id || null,
+      block_date: body.block_date || new Date().toISOString().split('T')[0],
+      start_time: body.start_time || '09:00',
+      end_time: body.end_time || '10:00',
+      block_type: sanitize(body.block_type, 20) || 'work',
+      energy_level: parseInt(body.energy_level) || 3
     });
-    const data = await resp.json();
-    const songs = (data.result?.songs || []).map(s => ({
-      id: s.id, name: s.name,
-      artists: (s.artists || []).map(a => a.name).join(' / '),
-      album: s.album?.name || '', duration: s.duration || 0,
-      embedUrl: `https://music.163.com/outchain/player?type=2&id=${s.id}&auto=0&height=66`
-    }));
-    res.json({ success: true, songs, total: data.result?.songCount || 0 });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true, blockId: bid });
+  }
 
-// ========== 仪表盘 ==========
-app.get('/api/dashboard', authMw, async (req, res) => {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    // 并行查询所有数据
-    const [stats, tasks, emotions, microStarts, pomo, entries] = await Promise.all([
-      findOne('daily_stats', { user_id: req.userId, stat_date: today }),
-      findList('tasks', { user_id: req.userId }, 'created_at', 'desc', 200),
-      findList('emotions', { user_id: req.userId }, 'created_at', 'desc', 100),
-      findList('micro_starts', { user_id: req.userId }, 'created_at', 'desc', 100),
-      findList('pomodoro_sessions', { user_id: req.userId }, 'created_at', 'desc', 100),
-      findList('diary_entries', { user_id: req.userId }, 'created_at', 'desc', 100)
-    ]);
-    
-    // 计算统计
-    const todayPomo = pomo.filter(p => p.created_at && p.created_at.startsWith(today));
-    const todayStats = stats || { tasks_created: 0, tasks_started: 0, tasks_completed: 0, micro_starts_count: 0, procrastination_count: 0, pomodoro_count: 0 };
-    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').slice(0, 5);
-    const recentEmotion = emotions[0] || null;
-    const todayMicroStarts = microStarts.filter(ms => ms.created_at && ms.created_at.startsWith(today));
-    
-    // 近7天统计
-    const weeklyStats = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const ds = d.toISOString().split('T')[0];
-      const s = await findOne('daily_stats', { user_id: req.userId, stat_date: ds }) || {};
-      weeklyStats.push({ stat_date: ds, ...s });
-    }
-    
-    // 到期任务
-    const upcomingTasks = tasks.filter(t => {
-      return t.status !== 'completed' && t.due_date && t.due_date <= new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
-    }).slice(0, 10);
-    
-    res.json({
-      success: true,
-      todayStats,
-      pendingTasks,
-      todayBlocks: [],
-      recentEmotion,
-      weeklyStats,
-      todayPomodoro: { count: todayPomo.length, completed: todayPomo.filter(p => p.completed).length },
-      upcomingTasks,
-      tasks, emotions, commitments: [], diary: entries, microStarts, pomodoro: pomo
-    });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+  if (path === '/api/time-blocks' && method === 'GET') {
+    var where = { user_id: userId };
+    var dt = body.date || event.queryStringParameters?.date;
+    if (dt) where.block_date = dt;
+    var blocks = await findList('time_blocks', where, 'start_time', 'asc', 200);
+    return ok({ success: true, blocks });
+  }
 
-// ========== 数据备份 ==========
-app.post('/api/backup', authMw, async (req, res) => {
-  try {
-    const tables = ['tasks','diary_entries','emotions','commitments','micro_starts','pomodoro_sessions','time_blocks','daily_stats'];
-    let data = { backupDate: new Date().toISOString(), userId: req.userId };
-    for (const t of tables) {
-      try {
-        data[t] = await findList(t, { user_id: req.userId });
-      } catch(e) { data[t] = []; }
-    }
-    const key = `backup/${req.userId}/${Date.now()}.json`;
-    await cloudbase.uploadFile({
-      cloudPath: key,
-      fileContent: Buffer.from(JSON.stringify(data,null,2))
-    });
-    res.json({ success: true, key, size: JSON.stringify(data).length });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+  // ========== 网易云音乐 ==========
+  if (path === '/api/music/search') {
+    var kw = body.keyword || event.queryStringParameters?.keyword || '';
+    if (!kw) return err(400, '请输入关键词');
+    try {
+      var resp = await fetch(`https://music.163.com/api/search/get?s=${encodeURIComponent(kw)}&type=1&limit=20&offset=0`, {
+        headers: { 'Referer': 'https://music.163.com/', 'User-Agent': 'Mozilla/5.0' }
+      });
+      var d = await resp.json();
+      var songs = (d.result?.songs || []).map(function(s) {
+        return {
+          id: s.id, name: s.name,
+          artists: (s.artists || []).map(function(a) { return a.name; }).join(' / '),
+          album: s.album?.name || '', duration: s.duration || 0,
+          embedUrl: 'https://music.163.com/outchain/player?type=2&id=' + s.id + '&auto=0&height=66'
+        };
+      });
+      return ok({ success: true, songs, total: d.result?.songCount || 0 });
+    } catch(e) { return err(500, e.message); }
+  }
 
-// ========== 用户偏好 ==========
-app.post('/api/user/preferences', authMw, async (req, res) => {
-  try {
-    const user = await findOne('users', { _id: req.userId });
-    if (!user) return res.status(404).json({ error: '用户不存在' });
-    const prefs = { ...(user.preferences || {}), ...req.body };
+  // ========== 用户信息 ==========
+  if (path === '/api/user' && method === 'GET') {
+    var user = await findOne('users', { _id: userId });
+    if (!user) return err(404, '用户不存在');
+    return ok({ success: true, user: { id: user._id, username: user.username, preferences: user.preferences || {} } });
+  }
+
+  // ========== 用户偏好 ==========
+  if (path === '/api/user/preferences' && method === 'POST') {
+    var user = await findOne('users', { _id: userId });
+    if (!user) return err(404, '用户不存在');
+    var prefs = Object.assign({}, user.preferences || {}, body);
     await coll('users').doc(user._id).update({ preferences: prefs });
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+    return ok({ success: true });
+  }
 
-// ========== 数据导入 ==========
-app.post('/api/import', authMw, async (req, res) => {
+  // ========== 百度网盘状态（简化返回）==========
+  if (path === '/api/cloud-drive/baidu/config-status') {
+    return ok({ success: true, hasGlobalConfig: false, hasUserConfig: false });
+  }
+
+  // 404
+  return err(404, 'Not Found: ' + path);
+}
+
+// ═══ 主入口 ═══
+exports.main = async (event, context) => {
   try {
-    const { entries } = req.body;
-    if (!entries || !Array.isArray(entries)) return res.status(400).json({ error: '无数据' });
-    let count = 0;
-    for (const entry of entries) {
-      if (entry.type === 'task') {
-        delete entry._id; entry.user_id = req.userId;
-        await insert('tasks', entry); count++;
-      }
-    }
-    res.json({ success: true, imported: count });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ========== 每周计划（精简版）==========
-app.get('/api/weekly-plans', authMw, async (req, res) => {
-  const { week_start } = req.query;
-  const where = { user_id: req.userId };
-  if (week_start) where.week_start = week_start;
-  const plans = await findList('weekly_plans', where, 'day_of_week', 'asc', 200);
-  res.json({ success: true, plans });
-});
-
-app.post('/api/weekly-plans', authMw, async (req, res) => {
-  try {
-    const data = { ...req.body, user_id: req.userId };
-    if (!data.title) return res.status(400).json({ error: '标题不能为空' });
-    const id = await insert('weekly_plans', data);
-    res.json({ success: true, id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/weekly-plans/:id', authMw, async (req, res) => {
-  try {
-    const plan = await findOne('weekly_plans', { _id: req.params.id, user_id: req.userId });
-    if (!plan) return res.status(404).json({ error: '计划不存在' });
-    await coll('weekly_plans').doc(plan._id).update({ ...req.body, updated_at: new Date().toISOString() });
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/weekly-plans/delete', authMw, async (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: '请选择计划' });
-    for (const id of ids) {
-      await removeOne('weekly_plans', { _id: id, user_id: req.userId });
-    }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ========== 周视图模板 ==========
-app.get('/api/weekly-plans/templates', authMw, async (req, res) => {
-  const templates = await findList('user_templates', { user_id: req.userId }, 'sort_order', 'asc', 50);
-  res.json({ success: true, templates });
-});
-
-app.post('/api/weekly-plans/templates', authMw, async (req, res) => {
-  try {
-    if (!req.body.title) return res.status(400).json({ error: '标题不能为空' });
-    const id = await insert('user_templates', { ...req.body, user_id: req.userId });
-    res.json({ success: true, id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/weekly-plans/templates/:id', authMw, async (req, res) => {
-  try {
-    const tpl = await findOne('user_templates', { _id: req.params.id, user_id: req.userId });
-    if (!tpl) return res.status(404).json({ error: '模板不存在' });
-    await coll('user_templates').doc(tpl._id).update({ ...req.body, updated_at: new Date().toISOString() });
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/weekly-plans/templates/:id', authMw, async (req, res) => {
-  try {
-    await removeOne('user_templates', { _id: req.params.id, user_id: req.userId });
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ========== 百度网盘配置状态 ==========
-app.get('/api/cloud-drive/baidu/config-status', optionalAuth, (req, res) => {
-  // CloudBase 版不做百度网盘集成（免费版资源有限）
-  res.json({ success: true, hasGlobalConfig: false, hasUserConfig: false, usingGlobal: false });
-});
-
-// ========== 404 ==========
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not Found', path: req.path });
-});
-
-// ========== 导出为 CloudBase 云函数入口 ==========
-const { serverless } = require('@cloudbase/serverless');
-exports.main = serverless(app);
+    return await route(event);
+  } catch(e) {
+    return jsonResp(500, { error: e.message });
+  }
+};

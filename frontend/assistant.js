@@ -1,86 +1,93 @@
-// ==================== 辅助工具页面（CBT速记 + 网易云音乐）====================
+// ==================== 辅助工具页面（灵感记录 + 网易云音乐）====================
+// 灵感记录替代了原来的CBT速记
 
-// ========== CBT 速记 ==========
-var cbtMoods = [
-  { key: 'anxious', icon: '😰', label: '焦虑' },
-  { key: 'frustrated', icon: '😤', label: '挫败' },
-  { key: 'angry', icon: '😠', label: '生气' },
-  { key: 'sad', icon: '😢', label: '难过' },
-  { key: 'tired', icon: '😩', label: '疲惫' },
-  { key: 'guilty', icon: '😞', label: '内疚' },
+// ========== 灵感来源选项 ==========
+var inspirationSources = [
+  { key: 'delivery', icon: '🏍️', label: '送外卖路上' },
+  { key: 'running', icon: '🏃', label: '跑步时' },
+  { key: 'x-twitter', icon: '🐦', label: '刷X时' },
+  { key: 'reading', icon: '📖', label: '读书/看视频' },
+  { key: 'shower', icon: '🚿', label: '洗澡/睡前' },
+  { key: 'other', icon: '💡', label: '其他' },
 ];
 
+// ========== 主渲染函数 ==========
 window.renderAssistant = async function() {
   var div = el('div', 'p-3 md:p-6 max-w-5xl mx-auto fade-in');
-  var recent = await loadRecentCbt();
+  var recentList = await loadInspirations();
 
   div.innerHTML = `
     <div class="mb-4">
       <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-        <i class="fas fa-brain text-indigo-500" style="font-size:18px"></i> CBT 速记
+        <i class="fas fa-lightbulb text-yellow-500" style="font-size:18px"></i> 灵感记录
       </h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">捕获消极思维 → 理性重构</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">随时随地捕获灵感 · 自动保存到云端</p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-      <!-- CBT 速记表单 -->
+      <!-- 灵感记录表单 -->
       <div class="md:col-span-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm">
         <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
-          <i class="fas fa-pen-fancy text-indigo-500" style="font-size:12px"></i> 即时记录
+          <i class="fas fa-pen-fancy text-yellow-500" style="font-size:12px"></i> 新灵感
         </h3>
 
-        <!-- 触发情境 -->
+        <!-- 标题（一句话概括） -->
         <div class="mb-3">
-          <label class="text-xs text-gray-500 block mb-1">发生了什么？</label>
-          <input id="cbt-trigger" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" placeholder="例如：看到待办清单就心烦..." maxlength="200">
+          <label class="text-xs text-gray-500 block mb-1">一句话概括 <span class="text-gray-300">（可选）</span></label>
+          <input id="insp-title" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" placeholder="例如：送外卖时想到的短视频脚本..." maxlength="200">
         </div>
 
-        <!-- 自动思维 -->
+        <!-- 灵感内容 -->
         <div class="mb-3">
-          <label class="text-xs text-gray-500 block mb-1">脑海里冒出了什么想法？<span class="text-gray-300">（自动思维）</span></label>
-          <textarea id="cbt-thought" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm h-16 resize-none" placeholder='"这个任务太难了，我做不了"…' maxlength="500"></textarea>
+          <label class="text-xs text-gray-500 block mb-1">灵感/文案内容</label>
+          <textarea id="insp-content" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm h-28 resize-none" placeholder="把你的想法写下来，完整的句子、关键词、或者一句文案都行..." maxlength="2000"></textarea>
         </div>
 
-        <!-- 情绪选择 -->
+        <!-- 灵感来源 -->
         <div class="mb-3">
-          <label class="text-xs text-gray-500 block mb-1">现在感觉如何？</label>
-          <div class="flex gap-2" id="cbt-mood-list">
-            ${cbtMoods.map(function(m) {
-              return '<button onclick="selectCbtMood(\'' + m.key + '\',this)" class="cbt-mood-btn flex flex-col items-center gap-0.5 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent transition-all" data-key="' + m.key + '">' +
-                '<span class="text-lg">' + m.icon + '</span>' +
-                '<span class="text-[10px] text-gray-500">' + m.label + '</span></button>';
+          <label class="text-xs text-gray-500 block mb-1">灵感来源</label>
+          <div class="flex gap-2 flex-wrap" id="insp-source-list">
+            ${inspirationSources.map(function(s) {
+              return '<button onclick="selectInspSource(\'' + s.key + '\',this)" class="insp-source-btn flex items-center gap-1 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border border-transparent transition-all text-xs" data-key="' + s.key + '">' +
+                '<span>' + s.icon + '</span>' +
+                '<span class="text-gray-600 dark:text-gray-400">' + s.label + '</span></button>';
             }).join('')}
           </div>
         </div>
 
-        <!-- 思维重构 -->
+        <!-- 用途标签 -->
         <div class="mb-4">
-          <label class="text-xs text-gray-500 block mb-1">换个角度想想？<span class="text-gray-300">（重构）</span></label>
-          <textarea id="cbt-reframe" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm h-16 resize-none" placeholder='"可以先拆成小步骤，做2分钟试试"…' maxlength="500"></textarea>
-        </div>
-
-        <!-- 行动一步 -->
-        <div class="mb-4">
-          <label class="text-xs text-gray-500 block mb-1">下一步做什么？<span class="text-gray-300">（微小行动）</span></label>
-          <input id="cbt-action" class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" placeholder="比如：打开文档写第一句" maxlength="200">
-        </div>
-
-        <button onclick="saveCbtEntry()" class="w-full py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-all"><i class="fas fa-save mr-1"></i>保存记录</button>
-      </div>
-
-      <!-- 右侧：近期记录 + 音乐 -->
-      <div class="md:col-span-2 space-y-3">
-        <!-- 近期CBT记录 -->
-        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm">
-          <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
-            <i class="fas fa-history text-gray-400" style="font-size:12px"></i> 近期记录
-          </h3>
-          <div id="cbt-recent-list">
-            ${recent || '<p class="text-xs text-gray-400 text-center py-6">还没有CBT记录</p>'}
+          <label class="text-xs text-gray-500 block mb-1">用途标签 <span class="text-gray-300">（可选）</span></label>
+          <div class="flex gap-2 flex-wrap">
+            <button onclick="toggleInspTag('video',this)" class="insp-tag-btn px-3 py-1.5 rounded-full bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent text-xs text-gray-600 dark:text-gray-400 transition-all">🎬 短视频脚本</button>
+            <button onclick="toggleInspTag('thread',this)" class="insp-tag-btn px-3 py-1.5 rounded-full bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent text-xs text-gray-600 dark:text-gray-400 transition-all">📝 X Thread</button>
+            <button onclick="toggleInspTag('copy',this)" class="insp-tag-btn px-3 py-1.5 rounded-full bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent text-xs text-gray-600 dark:text-gray-400 transition-all">✍️ 文案</button>
+            <button onclick="toggleInspTag('idea',this)" class="insp-tag-btn px-3 py-1.5 rounded-full bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent text-xs text-gray-600 dark:text-gray-400 transition-all">💡 创业想法</button>
+            <button onclick="toggleInspTag('other',this)" class="insp-tag-btn px-3 py-1.5 rounded-full bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent text-xs text-gray-600 dark:text-gray-400 transition-all">📌 其他</button>
           </div>
         </div>
 
-        <!-- 网易云音乐（折叠版） -->
+        <button onclick="saveInspiration()" class="w-full py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:from-yellow-600 hover:to-orange-600 transition-all shadow-sm"><i class="fas fa-save mr-1"></i>保存灵感</button>
+      </div>
+
+      <!-- 右侧：近期灵感 + 音乐 -->
+      <div class="md:col-span-2 space-y-3">
+        <!-- 近期灵感列表 -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm">
+          <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+            <i class="fas fa-history text-gray-400" style="font-size:12px"></i> 近期灵感
+            <span id="insp-count-badge" class="ml-auto text-[10px] text-gray-400"></span>
+          </h3>
+          <div class="relative mb-2">
+            <input id="insp-search-input" type="text" placeholder="搜索灵感..." class="w-full px-3 py-1.5 pl-8 rounded-lg border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-xs" oninput="window._fkFilterInsp()" style="box-sizing:border-box;">
+            <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11px;color:#9ca3af;"></i>
+          </div>
+          <div id="insp-recent-list" class="space-y-1.5 max-h-80 overflow-y-auto">
+            ${recentList || '<div class="text-center py-8"><i class="far fa-lightbulb text-3xl text-gray-300 dark:text-gray-600 mb-2"></i><p class="text-xs text-gray-400">还没有灵感记录</p><p class="text-[10px] text-gray-300 dark:text-gray-500 mt-1">随便写点什么吧，灵感不等人</p></div>'}
+          </div>
+        </div>
+
+        <!-- 网易云音乐 -->
         <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm">
           <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
             <i class="fas fa-music text-rose-500" style="font-size:12px"></i> 专注音乐
@@ -105,74 +112,209 @@ window.renderAssistant = async function() {
   return div;
 }
 
-var selectedCbtMood = null;
+// ========== 灵感来源选择 ==========
+var selectedInspSource = null;
 
-function selectCbtMood(key, btn) {
-  selectedCbtMood = key;
-  document.querySelectorAll('.cbt-mood-btn').forEach(function(b) {
-    b.className = b.className.replace(' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30', '');
-    b.className += ' border-transparent';
+function selectInspSource(key, btn) {
+  selectedInspSource = key;
+  document.querySelectorAll('.insp-source-btn').forEach(function(b) {
+    b.className = b.className.replace(' border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30', '');
+    b.className = b.className.replace('border-transparent', '') + ' border-transparent';
   });
   btn.className = btn.className.replace(' border-transparent', '');
-  btn.className += ' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30';
+  btn.className += ' border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30';
 }
+window.selectInspSource = selectInspSource;
 
-async function saveCbtEntry() {
-  var trigger = document.getElementById('cbt-trigger')?.value?.trim();
-  var thought = document.getElementById('cbt-thought')?.value?.trim();
-  var reframe = document.getElementById('cbt-reframe')?.value?.trim();
-  var action = document.getElementById('cbt-action')?.value?.trim();
+// ========== 编辑状态 ==========
+var _editingId = null;
 
-  if (!thought && !trigger) { showToast('请描述你的想法或情境', 'warning'); return; }
+window.editInspiration = function(id, b64Title, b64Content) {
+  _editingId = id;
+  try {
+    document.getElementById('insp-title').value = decodeURIComponent(escape(atob(b64Title || '')));
+  } catch(e) {
+    document.getElementById('insp-title').value = '';
+  }
+  try {
+    document.getElementById('insp-content').value = decodeURIComponent(escape(atob(b64Content || '')));
+  } catch(e) {
+    document.getElementById('insp-content').value = '';
+  }
+  // 滚动到表单
+  document.querySelector('.md\\:col-span-3')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('insp-content')?.focus();
+  // 更新按钮文字
+  var btn = document.querySelector('[onclick="saveInspiration()"]');
+  if (btn) btn.innerHTML = '<i class="fas fa-pen mr-1"></i>更新灵感';
+  showToast('正在编辑...', 'info');
+};
+
+// ========== 用途标签选择 ==========
+var selectedInspTags = [];
+
+function toggleInspTag(tag, btn) {
+  var idx = selectedInspTags.indexOf(tag);
+  if (idx > -1) {
+    selectedInspTags.splice(idx, 1);
+    btn.className = btn.className.replace(' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', '');
+    btn.className += ' border-transparent text-gray-600 dark:text-gray-400';
+  } else {
+    selectedInspTags.push(tag);
+    btn.className = btn.className.replace(' border-transparent', '');
+    btn.className += ' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400';
+  }
+}
+window.toggleInspTag = toggleInspTag;
+
+// ========== 保存灵感到数据库（新建或更新）==========
+async function saveInspiration() {
+  var title = document.getElementById('insp-title')?.value?.trim();
+  var content = document.getElementById('insp-content')?.value?.trim();
+
+  if (!content) { showToast('请写点什么再保存', 'warning'); return; }
 
   try {
-    var title = (trigger || 'CBT速记').substring(0, 100);
-    var content = (trigger ? '触发情境：' + trigger : '') + (action ? '\n下一步行动：' + action : '');
-    await api.post('/api/diary', {
-      title: title,
-      content: content || ' ',
-      mood: selectedCbtMood || 'neutral',
-      template_type: 'cbt_thought',
-      cbt_thought: thought || '',
-      cbt_reframe: reframe || '',
-      is_private: true
-    });
-    showToast('已保存', 'success');
+    var finalTitle = title || '灵感 ' + new Date().toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    var extra = '';
+    if (selectedInspSource) extra += '来源：' + (inspirationSources.find(function(s){return s.key===selectedInspSource})?.icon||selectedInspSource) + ' ';
+    if (selectedInspTags.length > 0) extra += '标签：#' + selectedInspTags.join(' #') + ' ';
+
+    if (_editingId) {
+      await api.put('/api/diary/' + _editingId, {
+        title: finalTitle.substring(0, 100),
+        content: content,
+        mood: selectedInspSource || 'neutral',
+        cbt_thought: extra
+      });
+      showToast('灵感已更新 ✏️', 'success');
+      _editingId = null;
+    } else {
+      await api.post('/api/diary', {
+        title: finalTitle.substring(0, 100),
+        content: content,
+        mood: selectedInspSource || 'neutral',
+        template_type: 'inspiration',
+        cbt_thought: extra,
+        is_private: true
+      });
+      showToast('灵感已保存 ✨', 'success');
+    }
     // 重置表单
-    document.getElementById('cbt-trigger').value = '';
-    document.getElementById('cbt-thought').value = '';
-    document.getElementById('cbt-reframe').value = '';
-    document.getElementById('cbt-action').value = '';
-    selectedCbtMood = null;
-    document.querySelectorAll('.cbt-mood-btn').forEach(function(b) {
-      b.className = b.className.replace(' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30', '') + ' border-transparent';
+    document.getElementById('insp-title').value = '';
+    document.getElementById('insp-content').value = '';
+    selectedInspSource = null;
+    document.querySelectorAll('.insp-source-btn').forEach(function(b) {
+      b.className = b.className.replace(' border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30', '') + ' border-transparent';
     });
-    // 刷新近期记录
-    var recent = await loadRecentCbt();
-    var list = document.getElementById('cbt-recent-list');
-    if (list) list.innerHTML = recent || '<p class="text-xs text-gray-400 text-center py-4">还没有CBT记录</p>';
+    selectedInspTags = [];
+    document.querySelectorAll('.insp-tag-btn').forEach(function(b) {
+      b.className = b.className.replace(' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', '');
+      b.className += ' border-transparent text-gray-600 dark:text-gray-400';
+    });
+    // 刷新列表
+    var listHtml = await loadInspirations();
+    var list = document.getElementById('insp-recent-list');
+    if (list) list.innerHTML = listHtml || '<div class="text-center py-8"><i class="far fa-lightbulb text-3xl text-gray-300 dark:text-gray-600 mb-2"></i><p class="text-xs text-gray-400">还没有灵感记录</p></div>';
+    // 重置按钮文字
+    _editingId = null;
+    var btn = document.querySelector('[onclick="saveInspiration()"]');
+    if (btn) btn.innerHTML = '<i class="fas fa-save mr-1"></i>保存灵感';
   } catch (err) {
     showToast('保存失败: ' + err.message, 'error');
   }
 }
+window.saveInspiration = saveInspiration;
 
-async function loadRecentCbt() {
+// ========== 删除灵感 ==========
+async function deleteInspiration(id, el) {
+  if (!confirm('确定删除这条灵感吗？')) return;
   try {
-    var data = await api.get('/api/diary');
-    var entries = (data.entries || []).filter(function(e) { return e.cbt_thought || e.cbt_reframe; });
+    await api.del('/api/diary/' + id);
+    var card = el.closest('.insp-card') || el.parentElement;
+    if (card) {
+      card.style.transition = 'all 0.3s';
+      card.style.opacity = '0';
+      card.style.transform = 'translateX(30px)';
+      setTimeout(function() { card.remove(); }, 300);
+    }
+    showToast('已删除', 'info');
+    var countBadge = document.getElementById('insp-count-badge');
+    if (countBadge) {
+      var remaining = document.querySelectorAll('.insp-card').length;
+      if (remaining === 0) {
+        document.getElementById('insp-recent-list').innerHTML = '<div class="text-center py-8"><i class="far fa-lightbulb text-3xl text-gray-300 dark:text-gray-600 mb-2"></i><p class="text-xs text-gray-400">还没有灵感记录</p></div>';
+      }
+    }
+  } catch(err) {
+    showToast('删除失败', 'error');
+  }
+}
+window.deleteInspiration = deleteInspiration;
+
+// ========== 加载灵感列表 ==========
+var _allInspirations = []; // 用于搜索
+
+window._fkFilterInsp = function() {
+  var q = (document.getElementById('insp-search-input')?.value || '').trim().toLowerCase();
+  var list = document.getElementById('insp-recent-list');
+  if (!list) return;
+  if (!q) {
+    // 无关键词，显示全部
+    list.innerHTML = renderInspList(_allInspirations);
+    return;
+  }
+  var filtered = _allInspirations.filter(function(e) {
+    var title = (e.title || '').toLowerCase();
+    var content = (e.content || '').toLowerCase();
+    var extra = (e.cbt_thought || '').toLowerCase();
+    return title.indexOf(q) > -1 || content.indexOf(q) > -1 || extra.indexOf(q) > -1;
+  });
+  list.innerHTML = filtered.length > 0 ? renderInspList(filtered) : '<div class="text-center py-6 text-gray-400 text-xs"><i class="fas fa-search text-lg mb-1"></i><p>没有找到匹配的灵感</p></div>';
+};
+
+function renderInspList(entries) {
+  return entries.slice(0, 20).map(function(e) {
+    var title = e.title || '';
+    var content = (e.content || '').substring(0, 80);
+    var extra = e.cbt_thought || '';
+    var time = new Date(e.created_at).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    var hasMore = (e.content || '').length > 80;
+    var safeTitle = escapeHtml(title);
+    var safeContent = escapeHtml(content);
+    var safeExtra = escapeHtml(extra);
+    // 用 base64 编码原始内容避免 HTML onclick 引号冲突
+    var b64Title = btoa(unescape(encodeURIComponent(title)));
+    var b64Content = btoa(unescape(encodeURIComponent(e.content || '')));
+
+    return '<div class="insp-card p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-100 dark:border-gray-700 hover:border-yellow-300/50 transition-all">' +
+      '<div class="flex items-start justify-between gap-1">' +
+      '<div class="flex-1 min-w-0">' +
+      '<div class="flex items-center gap-1.5 mb-0.5">' +
+      '<i class="fas fa-lightbulb text-yellow-500" style="font-size:10px"></i>' +
+      '<span class="text-xs font-medium text-gray-800 dark:text-white truncate">' + safeTitle + '</span>' +
+      '</div>' +
+      '<p class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">' + safeContent + (hasMore ? '...' : '') + '</p>' +
+      (safeExtra ? '<p class="text-[10px] text-gray-400 mt-0.5">' + safeExtra + '</p>' : '') +
+      '<p class="text-[10px] text-gray-400 mt-0.5">' + time + '</p>' +
+      '</div>' +
+      '<div style="display:flex;gap:2px;flex-shrink:0;">' +
+      '<button onclick="editInspiration(' + e.id + ',\'' + b64Title + '\',\'' + b64Content + '\')" class="text-gray-300 dark:text-gray-600 hover:text-yellow-500 p-1" title="编辑"><i class="fas fa-pen" style="font-size:10px"></i></button>' +
+      '<button onclick="deleteInspiration(' + e.id + ',this)" class="text-gray-300 dark:text-gray-600 hover:text-red-500 p-1" title="删除"><i class="fas fa-trash-alt" style="font-size:10px"></i></button>' +
+      '</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+async function loadInspirations() {
+  try {
+    var data = await api.get('/api/diary?template_type=inspiration&limit=50');
+    var entries = data.entries || [];
+    _allInspirations = entries;
     if (entries.length === 0) return null;
-    return entries.slice(0, 8).map(function(e) {
-      var thought = (e.cbt_thought || '').substring(0, 60);
-      var reframe = (e.cbt_reframe || '').substring(0, 60);
-      return '<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-100 dark:border-gray-700 mb-1.5 last:mb-0">' +
-        '<div class="flex items-center gap-2 mb-1">' +
-        '<span class="text-[10px] text-gray-400">' + new Date(e.created_at).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) + '</span>' +
-        (e.mood ? '<span class="text-xs">' + (cbtMoods.find(function(m){return m.key===e.mood})?.icon||'') + '</span>' : '') +
-        '</div>' +
-        (thought ? '<p class="text-xs text-gray-600 dark:text-gray-400"><span class="text-red-400">💭</span> ' + escapeHtml(thought) + '</p>' : '') +
-        (reframe ? '<p class="text-xs text-green-600 dark:text-green-400 mt-0.5"><span class="text-green-400">🔄</span> ' + escapeHtml(reframe) + '</p>' : '') +
-        '</div>';
-    }).join('');
+    var countBadge = document.getElementById('insp-count-badge');
+    if (countBadge) countBadge.textContent = '共' + entries.length + '条';
+    return renderInspList(entries);
   } catch(e) {
     return null;
   }
@@ -199,7 +341,6 @@ window.searchMusic = async function() {
         '<div class="flex-1 min-w-0"><p class="text-xs font-medium text-gray-800 dark:text-white truncate">' + safeName + '</p><p class="text-[10px] text-gray-500 truncate">' + safeArtist + '</p></div>' +
         '<span class="text-[10px] text-gray-400">' + (min<10?'0':'')+min+':'+(sec<10?'0':'')+sec+'</span></div></div>';
     }).join('');
-    // 绑定点击事件
     var _songs = resp.songs;
     document.querySelectorAll('.song-item').forEach(function(el, i) {
       el.onclick = function() {

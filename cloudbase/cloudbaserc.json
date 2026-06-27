@@ -1,14 +1,15 @@
 {
-  "envId": "zhouji-xxxxx",
+  "envId": "buyibandewo-d4gyvn0db0f577e93",
   "region": "ap-guangzhou",
   "functions": [
     {
       "name": "api",
       "timeout": 30,
       "memory": 256,
+      "runtime": "Nodejs18.15",
       "envVariables": {
         "NODE_ENV": "production",
-        "JWT_SECRET": "请修改为随机字符串"
+        "JWT_SECRET": "zhouji-cb-jwt-2026-secure-key-8x9k2"
       },
       "public": true
     }

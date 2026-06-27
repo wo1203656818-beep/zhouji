@@ -3418,6 +3418,39 @@ router.delete('/api/diary/:id', async (req, env) => {
   }
 });
 
+// ========== 用户自定义数据（通过查询参数传key，避免路由参数问题） ==========
+router.get('/api/user-data', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    const url = new URL(req.url);
+    const key = url.searchParams.get('key') || 'default';
+    const row = await env.DB.prepare('SELECT data_value FROM user_data WHERE user_id = ? AND data_key = ?')
+      .bind(auth.userId, key).first();
+    return jsonResponse({ success: true, data: row ? row.data_value : null });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误' }, 500);
+  }
+});
+
+router.post('/api/user-data', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    const body = await req.json();
+    const key = body.key || 'default';
+    const value = body.value;
+    if (value === undefined) return jsonResponse({ error: '缺少value字段' }, 400);
+    await env.DB.prepare(
+      'INSERT INTO user_data (user_id, data_key, data_value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ' +
+      'ON CONFLICT(user_id, data_key) DO UPDATE SET data_value = excluded.data_value, updated_at = CURRENT_TIMESTAMP'
+    ).bind(auth.userId, key, value).run();
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return jsonResponse({ error: '服务器内部错误' }, 500);
+  }
+});
+
 // ========== 主入口 ==========
 
 
@@ -3445,6 +3478,7 @@ router.delete('/api/user', async (req, env) => {
     await db.prepare('DELETE FROM user_settings WHERE user_id = ?').bind(userId).run();
     await db.prepare('DELETE FROM user_preferences WHERE user_id = ?').bind(userId).run();
     await db.prepare('DELETE FROM user_achievements WHERE user_id = ?').bind(userId).run();
+    await db.prepare('DELETE FROM user_data WHERE user_id = ?').bind(userId).run();
     await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 
     return jsonResponse({ success: true, message: '账号及所有数据已删除' });

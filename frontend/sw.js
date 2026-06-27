@@ -1,11 +1,17 @@
 // 周迹 Service Worker - 实现 PWA 离线功能 (修复 FE-016)
-const CACHE_NAME = 'zhouji-v2.3';
+const CACHE_NAME = 'zhouji-v2.4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/app.js',
+  '/fate-killer.js',
+  '/assistant.js',
+  '/weekly.js',
+  '/diary.js',
+  '/stats.js',
+  '/social.js',
+  '/styles.css',
   '/manifest.json',
-  // 注意: CDN 资源不加入缓存，避免版本锁定和跨域问题
 ];
 
 // 安装时缓存静态资源

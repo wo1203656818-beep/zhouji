@@ -198,3 +198,16 @@ CREATE TABLE IF NOT EXISTS diary_media (
 CREATE INDEX IF NOT EXISTS idx_diary_entries_user ON diary_entries(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_diary_media_entry ON diary_media(entry_id);
 CREATE INDEX IF NOT EXISTS idx_diary_media_user ON diary_media(user_id);
+
+-- ========== 用户自定义数据表（用于反命计划等自定义进度存储） ==========
+CREATE TABLE IF NOT EXISTS user_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    data_key TEXT NOT NULL,
+    data_value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, data_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_data_user_key ON user_data(user_id, data_key);

@@ -73,6 +73,12 @@ async function renderStats() {
         <canvas id="microStartChart" style="max-height: 300px;"></canvas>
       </div>
 
+      <!-- 灵感趋势 -->
+      <div class="glass p-6 rounded-2xl">
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">💡 灵感趋势</h3>
+        <canvas id="inspirationTrendChart" style="max-height: 300px;"></canvas>
+      </div>
+
       <!-- 番茄钟统计 -->
       <div class="glass p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🍅 番茄钟统计</h3>
@@ -107,6 +113,10 @@ async function renderStats() {
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">启动次数</p>
       </div>
       <div class="glass p-6 rounded-2xl text-center">
+        <p class="text-3xl font-bold text-yellow-500" id="stat-inspiration-count">0</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">灵感数</p>
+      </div>
+      <div class="glass p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-emerald-500" id="stat-commitment-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">承诺总数</p>
       </div>
@@ -126,6 +136,9 @@ async function renderStats() {
       </button>
       <button onclick="exportStats('csv')" class="px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
         <i class="fas fa-file-csv mr-2"></i>导出CSV数据
+      </button>
+      <button onclick="exportStats('json')" class="px-6 py-3 bg-violet-500 text-white rounded-xl font-medium hover:bg-violet-600 transition-all">
+        <i class="fas fa-download mr-2"></i>导出JSON备份
       </button>
     </div>
   `;
@@ -154,12 +167,13 @@ async function loadStats(days = '30') {
 
     console.log('[loadStats] 正在调用 API...');
     // 并行加载所有统计数据（添加单个 API 错误处理）
-    const [taskTrend, emotionTrend, heatmap, procrastination, dashboard] = await Promise.all([
+    const [taskTrend, emotionTrend, heatmap, procrastination, dashboard, inspirationData] = await Promise.all([
       api.get('/api/stats/task-trend').catch(e => { console.error('[loadStats] task-trend API 失败:', e); return { trend: [] }; }),
       api.get('/api/stats/emotion-trend').catch(e => { console.error('[loadStats] emotion-trend API 失败:', e); return { trend: [] }; }),
       api.get('/api/stats/habit-heatmap').catch(e => { console.error('[loadStats] habit-heatmap API 失败:', e); return { heatmap: [] }; }),
       api.get('/api/stats/procrastination-pattern').catch(e => { console.error('[loadStats] procrastination-pattern API 失败:', e); return { pattern: [] }; }),
-      api.get('/api/dashboard').catch(e => { console.error('[loadStats] dashboard API 失败:', e); return {}; })
+      api.get('/api/dashboard').catch(e => { console.error('[loadStats] dashboard API 失败:', e); return {}; }),
+      api.get('/api/diary?template_type=inspiration&limit=999').catch(e => { console.error('[loadStats] inspiration API 失败:', e); return { entries: [] }; })
     ]);
     
     console.log('[loadStats] API 调用完成，开始渲染图表...', { taskTrend, emotionTrend, heatmap, procrastination, dashboard });
@@ -174,7 +188,11 @@ async function loadStats(days = '30') {
     updateStatCards(dashboard);
     
     // 渲染新图表（使用 dashboard 数据）
-    renderExtraCharts(dashboard);
+    renderExtraCharts(dashboard, inspirationData);
+    
+    // 更新灵感统计
+    var inspirations = inspirationData.entries || [];
+    document.getElementById('stat-inspiration-count').textContent = inspirations.length;
     console.log('[loadStats] 统计数据加载完成');
   } catch (err) {
     console.error('[loadStats] 加载统计数据失败:', err);
@@ -367,7 +385,7 @@ function updateStatCards(dashboard) {
 }
 
 // ========== 渲染额外图表 ==========
-function renderExtraCharts(dashboard) {
+function renderExtraCharts(dashboard, inspirationData) {
   // 日记趋势（按日期分组）
   const diaryData = dashboard.diary || [];
   const diaryTrend = [];
@@ -393,6 +411,16 @@ function renderExtraCharts(dashboard) {
 
   // 番茄钟数据
   renderPomodoroChart(dashboard.pomodoro || []);
+  
+  // 灵感趋势
+  var inspEntries = (inspirationData && inspirationData.entries) || [];
+  var inspMap = {};
+  inspEntries.forEach(function(d) {
+    var date = (d.created_at || '').split('T')[0];
+    if (date) inspMap[date] = (inspMap[date] || 0) + 1;
+  });
+  var inspTrend = Object.entries(inspMap).sort(function(a,b){return a[0].localeCompare(b[0])}).map(function(e){return {date:e[0], count:e[1]};});
+  renderInspirationTrendChart(inspTrend);
 }
 
 // ========== 日记趋势图 ==========
@@ -425,6 +453,39 @@ function renderMicroStartChart(data) {
   });
 }
 
+// ========== 灵感趋势图 ==========
+function renderInspirationTrendChart(data) {
+  var ctx = document.getElementById('inspirationTrendChart');
+  if (!ctx) return;
+  if (window.inspChartInstance) window.inspChartInstance.destroy();
+  if (!data || !data.length) { ctx.parentElement.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">暂无灵感数据</div>'; return; }
+  window.inspChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(function(d){return d.date}),
+      datasets: [{
+        label: '灵感数',
+        data: data.map(function(d){return d.count}),
+        borderColor: '#d97706',
+        backgroundColor: 'rgba(217,119,6,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        pointBackgroundColor: '#d97706',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 7, font: { size: 10 } } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }
+      }
+    }
+  });
+}
+
 // ========== 番茄钟统计图 ==========
 function renderPomodoroChart(data) {
   const ctx = document.getElementById('pomodoroChart');
@@ -448,6 +509,8 @@ async function exportStats(format) {
     await exportStatsToExcel();
   } else if (format === 'csv') {
     await exportCSVData();
+  } else if (format === 'json') {
+    await exportJSONBackup();
   } else {
     showToast('不支持的导出格式', 'error');
   }
@@ -705,9 +768,60 @@ function downloadFile(content, filename, contentType) {
   URL.revokeObjectURL(url);
 }
 
+// ========== JSON 全量备份导出 ==========
+async function exportJSONBackup() {
+  showToast('正在打包数据...', 'info');
+  try {
+    var [tasks, diary, emotions, microStarts, commitments, pomodoro, inspirations, planData] = await Promise.all([
+      api.get('/api/tasks').catch(function(){return {tasks:[]}}),
+      api.get('/api/diary?limit=999').catch(function(){return {entries:[]}}),
+      api.get('/api/emotions?limit=999').catch(function(){return []}),
+      api.get('/api/micro-starts?limit=999').catch(function(){return []}),
+      api.get('/api/commitments').catch(function(){return []}),
+      api.get('/api/pomodoro?limit=999').catch(function(){return []}),
+      api.get('/api/diary?template_type=inspiration&limit=999').catch(function(){return {entries:[]}}),
+      api.get('/api/user-data?key=fate_killer_plan').catch(function(){return {data:null}})
+    ]);
+    var backup = {
+      exportedAt: new Date().toISOString(),
+      version: '2.4',
+      stats: {
+        tasks: (tasks.tasks||[]).length,
+        diary: (diary.entries||[]).length,
+        emotions: (emotions.length||Array.isArray(emotions)?emotions.length:0),
+        inspirations: (inspirations.entries||[]).length,
+        commitments: (commitments.length||0),
+        pomodoro: (pomodoro.length||0)
+      },
+      data: {
+        tasks: tasks.tasks||[],
+        diary: diary.entries||[],
+        emotions: Array.isArray(emotions)?emotions:[],
+        microStarts: Array.isArray(microStarts)?microStarts:[],
+        commitments: Array.isArray(commitments)?commitments:[],
+        pomodoro: Array.isArray(pomodoro)?pomodoro:[],
+        inspirations: inspirations.entries||[],
+        planProgress: planData.data ? JSON.parse(planData.data) : null
+      }
+    };
+    var blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'zhouji-backup-' + new Date().toISOString().split('T')[0] + '.json';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('备份完成！共 ' + backup.stats.tasks + ' 个任务, ' + backup.stats.inspirations + ' 条灵感', 'success');
+  } catch(e) {
+    showToast('导出失败: ' + e.message, 'error');
+  }
+}
+
 // 暴露函数到全局
 window.renderStats = renderStats;
 window.loadStats = loadStats;
 window.exportStats = exportStats;
 window.exportStatsToExcel = exportStatsToExcel;
 window.exportCSVData = exportCSVData;
+window.exportJSONBackup = exportJSONBackup;

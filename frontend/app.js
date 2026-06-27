@@ -338,6 +338,7 @@ const routes = {
   'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
   'time-blocks': renderTimeBlocks, 'lab': renderLab,
   'assistant': function() { return window.renderAssistant.apply(this, arguments); },
+  'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
   'settings': renderSettings
 };
 
@@ -457,6 +458,7 @@ function renderNav() {
     { id: 'tasks', icon: 'fa-tasks', label: '任务台' },
     { id: 'micro-start', icon: 'fa-play-circle', label: '微启动' },
     { id: 'diary', icon: 'fa-book', label: '日记' },
+    { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
     { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄钟' },
     { id: 'emotion', icon: 'fa-heart', label: '情绪舱' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
@@ -601,6 +603,7 @@ function toggleMobileMorePanel() {
     { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
     { id: 'assistant', icon: 'fa-robot', label: '助手' },
+    { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
     { id: 'settings', icon: 'fa-cog', label: '设置' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'share', icon: 'fa-share-alt', label: '分享' },
@@ -924,6 +927,12 @@ async function renderDashboard() {
           <span class="block text-base md:text-lg font-bold text-gray-800 dark:text-white">${startRate}%</span>
           <span class="text-[10px] md:text-xs text-gray-400">本周</span>
         </div>
+      </div>
+
+      <!-- 每日一言 -->
+      <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:12px;">
+        <span style="font-size:20px;flex-shrink:0;">💬</span>
+        <p style="color:rgba(255,255,255,0.95);font-size:14px;font-weight:500;margin:0;line-height:1.5;">${window._dailyQuote || '"自由意志不是为所欲为，而是可以选择不认命。"'}</p>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
@@ -3634,4 +3643,109 @@ window.setupModalFocusTrap = setupModalFocusTrap;
 window.escapeHtml = window.escapeHtml || escapeHtml;
 
 // ========== IIFE 结束 ==========
+})();
+
+// ========== 每日一言 ==========
+var dailyQuotes = [
+  '"命是弱者的借口，运是强者的谦辞。"',
+  '"你朋友说2028才知道要干什么？那就用2026的结果打他的脸。"',
+  '"不是看到了希望才去坚持，而是坚持了才看到希望。"',
+  '"种一棵树最好的时间是十年前，其次是现在。"',
+  '"自由意志不是为所欲为，而是可以选择不认命。"',
+  '"送外卖不丢人，30岁还不敢做梦才丢人。"',
+  '"普通人用时间换钱，聪明人用内容换时间。"',
+  '"你的对手不是那个算命的，是昨天那个什么都没做的自己。"',
+  '"每天早起1小时，一年就多出365小时——相当于多活15天。"',
+  '"做你没做过的事叫成长，做你不愿做的事叫改变，做你不敢做的事叫突破。"',
+  '"60天后的你会感谢今天开始行动的自己。"',
+  '"运气是行动的影子，你跑得越快它跟得越紧。"',
+];
+window._dailyQuote = dailyQuotes[Math.floor(Math.random() * dailyQuotes.length)];
+
+// ========== 全局键盘快捷键 ==========
+document.addEventListener('keydown', function(e) {
+  // 不在输入框中才生效
+  var tag = (e.target || {}).tagName || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  switch(e.key) {
+    case 'd': case 'D': navigate('dashboard'); break;
+    case 'w': case 'W': navigate('weekly'); break;
+    case 't': case 'T': navigate('tasks'); break;
+    case '1': navigate('micro-start'); break;
+    case '2': navigate('diary'); break;
+    case '3': navigate('fate-killer'); break;
+    case '4': navigate('assistant'); break;
+    case '5': navigate('stats'); break;
+    case 'n': case 'N': window._quickAdd(); break;
+  }
+});
+
+// ========== Quick Add 浮动按钮 ==========
+window._quickAdd = function() {
+  var overlay = document.getElementById('fk-quick-add-overlay');
+  if (overlay) { overlay.remove(); return; }
+  
+  overlay = document.createElement('div');
+  overlay.id = 'fk-quick-add-overlay';
+  overlay.style.cssText = 'position:fixed;bottom:90px;right:20px;z-index:9998;background:var(--color-background-primary,#fff);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:16px;padding:16px;width:300px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.15);animation:fkSlideUp 0.2s ease;';
+  overlay.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+    '<span style="font-weight:600;font-size:14px;">' + icon('bolt') + ' 快速记录</span>' +
+    '<button onclick="document.getElementById(\'fk-quick-add-overlay\').remove()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;">' + '×' + '</button></div>' +
+    '<textarea id="fk-quick-input" placeholder="记下灵感、想法、待办..." style="width:100%;min-height:70px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;outline:none;box-sizing:border-box;margin-bottom:10px;"></textarea>' +
+    '<div style="display:flex;gap:6px;">' +
+    '<button onclick="window._quickSave(\'inspiration\')" style="flex:1;padding:7px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('lightbulb') + ' 存为灵感</button>' +
+    '<button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding:7px 12px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + '取消' + '</button></div>';
+  document.body.appendChild(overlay);
+  setTimeout(function() {
+    var inp = document.getElementById('fk-quick-input');
+    if (inp) inp.focus();
+  }, 100);
+};
+
+window._quickSave = async function(type) {
+  var content = document.getElementById('fk-quick-input')?.value?.trim();
+  if (!content) return;
+  try {
+    if (type === 'inspiration') {
+      await api.post('/api/diary', {
+        title: '快速灵感 ' + new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
+        content: content,
+        template_type: 'inspiration',
+        is_private: true
+      });
+    }
+    showToast('已保存 ✅', 'success');
+    document.getElementById('fk-quick-add-overlay')?.remove();
+  } catch(e) {
+    showToast('保存失败', 'error');
+  }
+};
+
+// 添加Quick Add浮动球
+(function() {
+  var fab = document.createElement('div');
+  fab.id = 'fk-fab';
+  fab.title = '快速记录 (N)';
+  fab.style.cssText = 'position:fixed;bottom:76px;right:16px;z-index:9997;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);font-size:18px;transition:transform 0.2s,bottom 0.3s;border:none;';
+  fab.innerHTML = '<i class="fas fa-plus"></i>';
+  fab.onmouseenter = function() { this.style.transform = 'scale(1.1)'; };
+  fab.onmouseleave = function() { this.style.transform = 'scale(1)'; };
+  fab.onclick = function() { window._quickAdd(); };
+  document.body.appendChild(fab);
+
+  // 监听底部导航栏的显示状态，调整FAB位置
+  var observer = new MutationObserver(function() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav && nav.style.display !== 'none') {
+      fab.style.bottom = '76px';
+    } else {
+      fab.style.bottom = '20px';
+    }
+  });
+  setTimeout(function() {
+    var nav = document.querySelector('.bottom-nav');
+    if (nav) observer.observe(nav, { attributes: true, attributeFilter: ['style'] });
+  }, 1000);
 })();

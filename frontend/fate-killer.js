@@ -28,27 +28,45 @@
 
   async function cloudLoad() {
     try {
-      var token = localStorage.getItem('token');
-      if (!token) return null;
+      if (window.networkFirst) {
+        var result = await window.networkFirst('fk_' + CLOUD_KEY, async function() {
+          var token = localStorage.getItem('token');
+          if (!token) throw new Error('no token');
+          var base = (window.__DEPLOY_CONFIG__ && window.__DEPLOY_CONFIG__.API_BASE_URL) || 'https://zhouji-api.wo1203656818.workers.dev';
+          var res = await fetch(base + '/api/user-data?key=' + encodeURIComponent(CLOUD_KEY), {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          var d = await res.json();
+          if (d && d.success && d.data) return JSON.parse(d.data);
+          throw new Error('no data');
+        });
+        return result.data;
+      }
+    } catch(e) {}
+    // 传统回退
+    var token = localStorage.getItem('token');
+    if (!token) return null;
+    try {
       var base = (window.__DEPLOY_CONFIG__ && window.__DEPLOY_CONFIG__.API_BASE_URL) || 'https://zhouji-api.wo1203656818.workers.dev';
       var res = await fetch(base + '/api/user-data?key=' + encodeURIComponent(CLOUD_KEY), {
         headers: { 'Authorization': 'Bearer ' + token }
       });
       var data = await res.json();
-      if (data && data.success && data.data) {
-        // 同步到离线存储
-        if (window.offlinePut) window.offlinePut('fk_' + CLOUD_KEY, JSON.parse(data.data));
-        return JSON.parse(data.data);
-      }
-    } catch(e) { /* offline fallback */ }
-    // 离线时从 IndexedDB 读取
-    if (window.offlineGet) {
-      var off = await window.offlineGet('fk_' + CLOUD_KEY);
+      if (data && data.success && data.data) return JSON.parse(data.data);
+    } catch(e) { /* offline */ }
+    if (window.cacheGet) {
+      var off = await window.cacheGet('fk_' + CLOUD_KEY);
       if (off) return off;
     }
     return null;
   }
   async function cloudSave(d) {
+    // 使用 writeThrough: 先存本地，再推云端
+    if (window.writeThrough) {
+      await window.writeThrough('fk_' + CLOUD_KEY, '/api/user-data', { key: CLOUD_KEY, value: JSON.stringify(d) }, 'POST');
+      return;
+    }
+    // 传统回退
     try {
       var token = localStorage.getItem('token');
       if (!token) return;
@@ -58,15 +76,7 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ key: CLOUD_KEY, value: JSON.stringify(d) })
       });
-      // 同步到离线存储
-      if (window.offlinePut) window.offlinePut('fk_' + CLOUD_KEY, d);
-    } catch(e) {
-      // 网络失败，存入离线队列
-      if (window.offlineEnqueue) {
-        window.offlineEnqueue('POST', '/api/user-data', { key: CLOUD_KEY, value: JSON.stringify(d) });
-        window.offlinePut('fk_' + CLOUD_KEY, d);
-      }
-    }
+    } catch(e) {}
   }
   function localLoad() {
     try { var r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch(e) {}

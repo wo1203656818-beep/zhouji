@@ -34,15 +34,29 @@ var loadingCounter = 0;
 window.showLoading = function() { loadingCounter++; var el = document.getElementById('loading'); if (el) el.classList.remove('hidden'); };
 window.hideLoading = function() { loadingCounter = Math.max(0, loadingCounter - 1); if (loadingCounter === 0) { var el = document.getElementById('loading'); if (el) el.classList.add('hidden'); } };
 
-// API 封装
+// API 封装（含离线检测）
 window.api = {
   async request(method, endpoint, body, options) {
     body = body || null; options = options || {};
     var retries = options.retries || 2, timeout = options.timeout || 30000;
-    window.showLoading();
     var token = window.safeStorage.get('token');
     var headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    // ====== 离线快速失败（不等30秒超时）======
+    if (window._isOnline === false) {
+      // 尝试从本地缓存读取
+      var cacheKey = method + ':' + endpoint + ':' + JSON.stringify(body || '');
+      if (method === 'GET' && window.cacheGet) {
+        var cached = await window.cacheGet(cacheKey);
+        if (cached) return cached;
+        var cached2 = await window.cacheGet(endpoint);
+        if (cached2) return cached2;
+      }
+      throw new Error('网络不可用');
+    }
+
+    window.showLoading();
     var lastError;
     for (var attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -63,6 +77,10 @@ window.api = {
         }
         if (!res.ok) { var ed = await res.json().catch(function() { return {}; }); throw new Error(ed.error || ed.message || '请求失败 (' + res.status + ')'); }
         var data = await res.json();
+        // 缓存GET结果
+        if (method === 'GET' && window.cachePut) {
+          window.cachePut(endpoint, data);
+        }
         window.hideLoading(); return data;
       } catch (err) {
         lastError = err;
@@ -71,6 +89,11 @@ window.api = {
       }
     }
     window.hideLoading();
+    // 网络失败后尝试从缓存读取
+    if (method === 'GET' && window.cacheGet) {
+      var fallback = await window.cacheGet(endpoint);
+      if (fallback) return fallback;
+    }
     throw lastError || new Error('请求失败');
   },
   get: function(ep) { return window.api.request('GET', ep); },

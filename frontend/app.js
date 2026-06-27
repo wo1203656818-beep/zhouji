@@ -208,7 +208,7 @@ function showErrorWithRetry(containerId, retryFn, msg) {
 }
 
 // Loading 控制（引用计数，防止快速切换时闪烁）
-let loadingCounter = 0;
+if (typeof loadingCounter === 'undefined') { var loadingCounter = 0; }
 function showLoading() { loadingCounter++; $('#loading')?.classList.remove('hidden'); }
 function hideLoading() { loadingCounter = Math.max(0, loadingCounter - 1); if (loadingCounter === 0) $('#loading')?.classList.add('hidden'); }
 
@@ -358,6 +358,7 @@ function navigate(page, params) {
   }
   window._isBackForward = false;
   render();
+}
 }
 
 // 路由回退（从 window.renderXxx 函数自动映射）

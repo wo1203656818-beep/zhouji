@@ -311,11 +311,21 @@ async function loadInspirations() {
     var data = await api.get('/api/diary?template_type=inspiration&limit=50');
     var entries = data.entries || [];
     _allInspirations = entries;
+    // 缓存到离线存储
+    if (window.offlinePut) window.offlinePut('inspirations', entries);
     if (entries.length === 0) return null;
     var countBadge = document.getElementById('insp-count-badge');
     if (countBadge) countBadge.textContent = '共' + entries.length + '条';
     return renderInspList(entries);
   } catch(e) {
+    // 离线时从 IndexedDB 读取
+    if (window.offlineGet) {
+      var cached = await window.offlineGet('inspirations');
+      if (cached && cached.length > 0) {
+        _allInspirations = cached;
+        return renderInspList(cached);
+      }
+    }
     return null;
   }
 }

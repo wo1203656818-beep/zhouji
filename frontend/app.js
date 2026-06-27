@@ -460,6 +460,7 @@ function renderNav() {
     { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
+    { id: 'content-planner', icon: 'fa-calendar-alt', label: '内容日历' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
   ];
   
@@ -598,6 +599,7 @@ function toggleMobileMorePanel() {
     { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
     { id: 'assistant', icon: 'fa-robot', label: '助手' },
+    { id: 'content-planner', icon: 'fa-calendar-alt', label: '内容日历' },
     { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
     { id: 'settings', icon: 'fa-cog', label: '设置' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
@@ -3670,8 +3672,9 @@ document.addEventListener('keydown', function(e) {
     case 't': case 'T': navigate('tasks'); break;
     case '1': navigate('micro-start'); break;
     case '2': navigate('diary'); break;
-    case '3': navigate('fate-killer'); break;
-    case '4': navigate('assistant'); break;
+      case '3': navigate('fate-killer'); break;
+      case '6': navigate('content-planner'); break;
+      case '4': navigate('assistant'); break;
     case '5': navigate('stats'); break;
     case 'n': case 'N': window._quickAdd(); break;
   }

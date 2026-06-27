@@ -1,6 +1,6 @@
 // 周迹 Service Worker v3 - 离线优先策略
 const CACHE_NAME = 'zhouji-v3';
-const API_CACHE = 'zhouji-api-v1';
+const API_CACHE = 'zhouji-api-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

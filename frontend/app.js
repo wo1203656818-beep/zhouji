@@ -1,20 +1,6 @@
 
-// ==================== 周迹前端 v2.4 - 核心模块已拆分为 core/ ====================
-// 工具函数 → core/utils.js   |   API封装 → core/api.js   |   路由导航 → core/router.js
-// 以下为各页面渲染函数，保持向后兼容
-
-// 若核心模块未加载，提供备用定义
-if (typeof window.safeStorage === 'undefined') {
-  window.safeStorage = { get:function(k){try{return localStorage.getItem(k)}catch(e){return null}}, set:function(k,v){try{localStorage.setItem(k,v);return true}catch(e){return false}}, remove:function(k){try{localStorage.removeItem(k)}catch(e){}} };
-}
-if (typeof window.api === 'undefined') {
-  window.api = { get:function(){return Promise.resolve({})}, post:function(){return Promise.resolve({})}, put:function(){return Promise.resolve({})}, del:function(){return Promise.resolve({})} };
-}
-if (typeof window.$ === 'undefined') {
-  window.$ = function(s){return document.querySelector(s)};
-  window.$$ = function(s){return document.querySelectorAll(s)};
-  window.el = function(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html)e.innerHTML=html;return e};
-}
+// ==================== 周迹前端 v2.0 - 全面优化版 ====================
+// 新增：深色模式、番茄钟、数据导入、任务模板、键盘快捷键、计时器持久化
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -208,12 +194,93 @@ function showErrorWithRetry(containerId, retryFn, msg) {
 }
 
 // Loading 控制（引用计数，防止快速切换时闪烁）
-if (typeof loadingCounter === 'undefined') { var loadingCounter = 0; }
+let loadingCounter = 0;
 function showLoading() { loadingCounter++; $('#loading')?.classList.remove('hidden'); }
 function hideLoading() { loadingCounter = Math.max(0, loadingCounter - 1); if (loadingCounter === 0) $('#loading')?.classList.add('hidden'); }
 
-// API 封装（核心实现在 core/api.js，这里只做引用）
-const api = window.api;
+// API 封装（带 loading 和错误处理）
+const api = {
+  async request(method, endpoint, body, options) {
+    if (body === void 0) { body = null; }
+    if (options === void 0) { options = {}; }
+    var retries = options.retries || 2;
+    var timeout = options.timeout || 30000;
+    showLoading();
+
+    var token = safeStorage.get('token');
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    // 已移除离线模式功能
+
+    var lastError;
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      try {
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function() { controller.abort(); }, timeout);
+
+        var res = await fetch(getApiBase() + endpoint, {
+          method: method, headers: headers,
+          body: body ? JSON.stringify(body) : null,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.status === 429) {
+          var retryAfter = parseInt(res.headers.get('X-RateLimit-Reset') || '5');
+          showToast('请求过于频繁，' + retryAfter + '秒后重试', 'warning');
+          await new Promise(function(r) { setTimeout(r, retryAfter * 1000); });
+          continue;
+        }
+
+        if (res.status === 401) {
+          var data = await res.json();
+          var isAuthEndpoint = endpoint.includes('/api/auth/');
+          if (isAuthEndpoint) {
+            // 登录/注册接口的401是用户名或密码错误，显示后端返回的实际错误
+            throw new Error(data.error || data.message || '用户名或密码错误');
+          }
+          // 其他接口的401才是token过期
+          safeStorage.remove('token');
+          safeStorage.remove('userId');
+          safeStorage.remove('username');
+          showToast('登录已过期，请重新登录', 'error');
+          setTimeout(function() { navigate('login'); }, 1500);
+          throw new Error('认证已过期');
+        }
+
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.message || 'HTTP ' + res.status);
+
+        // 请求成功
+
+        hideLoading();
+        return data;
+      } catch (err) {
+        lastError = err;
+        if (err.name === 'AbortError') {
+          console.warn('请求超时，重试中...');
+        } else if (err.message && err.message.includes('Failed to fetch')) {
+          hideLoading();
+          throw new Error('无法连接到服务器，请检查 API 地址或网络连接');
+        } else if (attempt < retries && !err.message.includes('认证')) {
+          await new Promise(function(r) { setTimeout(r, 1000 * (attempt + 1)); });
+          continue;
+        }
+        break;
+      }
+    }
+    hideLoading();
+    throw lastError;
+  },
+
+
+  get: (e) => api.request('GET', e),
+  post: (e, b) => api.request('POST', e, b),
+  put: (e, b) => api.request('PUT', e, b),
+  del: (e) => api.request('DELETE', e)
+};
+
 
 
 // 状态
@@ -258,10 +325,27 @@ function saveTimerState() {
   }
 }
 
-if(typeof window.navigate!=="function"){
-var _navigateHash="";
-function navigate(page, params) {
-  params = params || {};
+// 路由
+const routes = {
+  'login': renderLogin, 'dashboard': renderDashboard,
+  'weekly': function() { return (window.renderWeekly || function(){return el('div','<p class="text-center py-12">周视图加载中...</p>');}).apply(this, arguments); },
+  'tasks': renderTasks, 'task-detail': renderTaskDetail,
+  'micro-start': renderMicroStart,
+  'diary': function() { return (window.renderDiary || renderDiary).apply(this, arguments); },
+  'pomodoro': renderPomodoro,
+  'emotion': renderEmotion,
+  'stats': function() { return (window.renderStats || renderStats).apply(this, arguments); },
+  'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
+  'time-blocks': renderTimeBlocks, 'lab': renderLab,
+  'assistant': function() { return window.renderAssistant.apply(this, arguments); },
+  'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
+  'settings': renderSettings
+};
+
+// 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
+var _navigateHash = '';
+
+function navigate(page, params = {}) {
   state.currentPage = page;
   state.pageParams = params;
   var hashPath = '#/' + page;
@@ -278,18 +362,6 @@ function navigate(page, params) {
   window._isBackForward = false;
   render();
 }
-}
-
-// 路由回退（从 window.renderXxx 函数自动映射）
-var routes = window.__routes || (function() {
-  var r = {};
-  var pages = ['login','dashboard','weekly','tasks','task-detail','micro-start','diary','pomodoro','emotion','stats','commitments','commitment-detail','time-blocks','lab','assistant','fate-killer','content-planner','settings'];
-  pages.forEach(function(p) {
-    var fnName = 'render' + p.split('-').map(function(s){return s.charAt(0).toUpperCase()+s.slice(1)}).join('');
-    if (typeof window[fnName] === 'function') r[p] = window[fnName];
-  });
-  return r;
-})();
 
 // 修复 Bug6: render 改为 async，正确 await 异步渲染函数
 async function render() {
@@ -393,7 +465,6 @@ function renderNav() {
     { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
-    { id: 'content-planner', icon: 'fa-calendar-alt', label: '内容日历' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
   ];
   
@@ -532,7 +603,6 @@ function toggleMobileMorePanel() {
     { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
     { id: 'assistant', icon: 'fa-robot', label: '助手' },
-    { id: 'content-planner', icon: 'fa-calendar-alt', label: '内容日历' },
     { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
     { id: 'settings', icon: 'fa-cog', label: '设置' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
@@ -623,7 +693,6 @@ function renderLogin() {
         <div class="login-brand-icon">周</div>
         <h1>周迹</h1>
         <p>不是管理时间，是管理启动</p>
-        <p style="font-size:10px;color:#9ca3af;margin-top:2px;">${getApiBase()}</p>
       </div>
       <div id="login-form">
         <div class="mb-4">
@@ -3606,9 +3675,8 @@ document.addEventListener('keydown', function(e) {
     case 't': case 'T': navigate('tasks'); break;
     case '1': navigate('micro-start'); break;
     case '2': navigate('diary'); break;
-      case '3': navigate('fate-killer'); break;
-      case '6': navigate('content-planner'); break;
-      case '4': navigate('assistant'); break;
+    case '3': navigate('fate-killer'); break;
+    case '4': navigate('assistant'); break;
     case '5': navigate('stats'); break;
     case 'n': case 'N': window._quickAdd(); break;
   }
@@ -3616,10 +3684,6 @@ document.addEventListener('keydown', function(e) {
 
 // ========== Quick Add 浮动按钮 ==========
 window._quickAdd = function() {
-  // 登录页不显示
-  var cur = (window.location.hash || '#/dashboard').slice(2);
-  if (cur === 'login') { window.showToast('请先登录', 'warning'); return; }
-
   var overlay = document.getElementById('fk-quick-add-overlay');
   if (overlay) { overlay.remove(); return; }
   
@@ -3628,13 +3692,16 @@ window._quickAdd = function() {
   overlay.style.cssText = 'position:fixed;bottom:90px;right:20px;z-index:9998;background:var(--color-background-primary,#fff);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:16px;padding:16px;width:300px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.15);animation:fkSlideUp 0.2s ease;';
   overlay.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
     '<span style="font-weight:600;font-size:14px;">' + icon('bolt') + ' 快速记录</span>' +
-    '<button onclick="event.stopPropagation();document.getElementById(\'fk-quick-add-overlay\').remove()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;">' + '×' + '</button></div>' +
+    '<button onclick="document.getElementById(\'fk-quick-add-overlay\').remove()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;">' + '×' + '</button></div>' +
     '<textarea id="fk-quick-input" placeholder="记下灵感、想法、待办..." style="width:100%;min-height:70px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;outline:none;box-sizing:border-box;margin-bottom:10px;"></textarea>' +
     '<div style="display:flex;gap:6px;">' +
-    '<button onclick="event.stopPropagation();window._quickSave(\'inspiration\')" style="flex:1;padding:7px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('lightbulb') + ' 存为灵感</button>' +
-    '<button onclick="event.stopPropagation();var o=document.getElementById(\'fk-quick-add-overlay\');if(o)o.remove();" style="padding:7px 12px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + '取消' + '</button></div>';
+    '<button onclick="window._quickSave(\'inspiration\')" style="flex:1;padding:7px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('lightbulb') + ' 存为灵感</button>' +
+    '<button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding:7px 12px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + '取消' + '</button></div>';
   document.body.appendChild(overlay);
-  setTimeout(function() { var inp = document.getElementById('fk-quick-input'); if (inp) inp.focus(); }, 100);
+  setTimeout(function() {
+    var inp = document.getElementById('fk-quick-input');
+    if (inp) inp.focus();
+  }, 100);
 };
 
 window._quickSave = async function(type) {
@@ -3661,26 +3728,12 @@ window._quickSave = async function(type) {
   var fab = document.createElement('div');
   fab.id = 'fk-fab';
   fab.title = '快速记录 (N)';
-  fab.style.cssText = 'position:fixed;bottom:76px;right:16px;z-index:9997;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);font-size:18px;transition:transform 0.2s,bottom 0.3s;border:none;';
+  fab.style.cssText = 'position:fixed;bottom:76px;right:16px;z-index:9997;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);font-size:18px;transition:transform 0.2s,bottom 0.3s;border:none;';
   fab.innerHTML = '<i class="fas fa-plus"></i>';
   fab.onmouseenter = function() { this.style.transform = 'scale(1.1)'; };
   fab.onmouseleave = function() { this.style.transform = 'scale(1)'; };
-  fab.onclick = function(e) { e.stopPropagation(); window._quickAdd(); };
+  fab.onclick = function() { window._quickAdd(); };
   document.body.appendChild(fab);
-
-  // 根据页面显示/隐藏FAB
-  function updateFabVisibility() {
-    var hash = window.location.hash || '';
-    var page = hash.slice(2) || '';
-    var hasToken = !!localStorage.getItem('token');
-    // 登录页、注册页、无token、空hash时隐藏
-    var isAuthPage = (page === 'login' || page === 'register' || page === '' || !hasToken);
-    fab.style.display = isAuthPage ? 'none' : 'flex';
-  }
-  updateFabVisibility();
-  window.addEventListener('hashchange', updateFabVisibility);
-  // 也监听 storage 变化（token 被清除时）
-  window.addEventListener('storage', updateFabVisibility);
 
   // 监听底部导航栏的显示状态，调整FAB位置
   var observer = new MutationObserver(function() {

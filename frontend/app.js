@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2315
+// 版本：2026-06-28-2325
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -606,7 +606,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2315</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2325</span>
       </div>
     </div>
   </div>`;
@@ -1332,7 +1332,7 @@ function renderTasks() {
     <div class="mb-4">
       <input type="text" id="task-search" placeholder="搜索任务..." class="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all" oninput="debouncedSearch()">
     </div>
-    <div id="tasks-list" class="space-y-4">
+    <div id="tasks-list" class="space-y-4" onscroll="onTaskScroll(event)">
       <div class="text-center py-12"><div class="skeleton h-20 rounded-2xl mb-3"></div><div class="skeleton h-20 rounded-2xl mb-3"></div><div class="skeleton h-20 rounded-2xl"></div></div>
     </div>
   `;
@@ -1342,15 +1342,35 @@ function renderTasks() {
 
 let currentTaskFilter = 'all';
 let taskSortBy = 'manual'; // manual | priority | due_date | status | created
-const debouncedSearch = debounce(() => loadTasks(), 300);
+const debouncedSearch = debounce(() => { taskPage = 1; loadTasks(); }, 300);
 
-async function loadTasks() {
+// 任务分页加载
+let taskPage = 1;
+const taskPageSize = 20;
+let taskHasMore = true;
+let taskLoadingMore = false;
+
+// 滚动加载更多
+function onTaskScroll(e) {
+  if (taskLoadingMore || !taskHasMore) return;
+  var el = e.target;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+    taskPage++;
+    taskLoadingMore = true;
+    loadTasks(true);
+  }
+}
+
+async function loadTasks(append) {
   try {
     const search = $('#task-search')?.value?.trim();
     let params = currentTaskFilter !== 'all' ? `?status=${currentTaskFilter}` : '';
     if (search) params += (params ? '&' : '?') + `search=${encodeURIComponent(search)}`;
+    // 添加分页参数
+    params += (params ? '&' : '?') + `page=${taskPage}&page_size=${taskPageSize}`;
     const data = await api.get('/api/tasks' + params);
     var tasks = data.tasks || [];
+    taskHasMore = tasks.length >= taskPageSize;
     
     // 客户端排序
     if (taskSortBy === 'priority') {
@@ -1374,13 +1394,21 @@ async function loadTasks() {
       });
     }
     
-    state.tasks = tasks;
+    // 追加或替换
+    if (append) {
+      state.tasks = state.tasks.concat(tasks);
+      taskLoadingMore = false;
+    } else {
+      state.tasks = tasks;
+    }
+    
     const container = $('#tasks-list');
-    if (!tasks.length) {
+    if (!state.tasks.length) {
       container.innerHTML = `<div class="text-center py-12"><i class="fas fa-clipboard text-4xl text-gray-300 dark:text-gray-600 mb-4"></i><p class="text-gray-500 dark:text-gray-400">还没有任务</p><button onclick="showTaskModal()" class="mt-4 text-primary font-medium">创建第一个任务</button></div>`;
       return;
     }
-    container.innerHTML = tasks.map(function(task) {
+    
+    var html = state.tasks.map(function(task) {
       var isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed';
       return '<div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border ' + (isOverdue ? 'border-red-300 dark:border-red-700' : 'border-gray-100 dark:border-gray-700 hover:border-primary/30 dark:hover:border-primary/30') + ' transition-all" draggable="true" data-task-id="' + task.id + '" ondragstart="onTaskDragStart(event)" ondragend="onTaskDragEnd(event)" ondrop="onTaskDrop(event)" ondragover="onTaskDragOver(event)">' +
         '<div class="flex items-start gap-3">' +
@@ -1412,7 +1440,25 @@ async function loadTasks() {
           '</div>' +
         '</div></div>';
     }).join('');
+    
+    // 追加或替换 HTML
+    if (append) {
+      container.insertAdjacentHTML('beforeend', html);
+    } else {
+      container.innerHTML = html;
+    }
+    
+    // 显示"加载更多"提示
+    if (taskHasMore) {
+      if (!document.getElementById('task-load-more')) {
+        container.insertAdjacentHTML('beforeend', '<div id="task-load-more" class="text-center py-4 text-sm text-gray-400">滚动加载更多...</div>');
+      }
+    } else {
+      var loadMore = document.getElementById('task-load-more');
+      if (loadMore) loadMore.remove();
+    }
   } catch (err) {
+    taskLoadingMore = false;
     $('#tasks-list').innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTasks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
 }

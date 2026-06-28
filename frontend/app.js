@@ -1,6 +1,7 @@
 
-// ==================== 周迹前端 v2.0 - 全面优化版 ====================
-// 新增：深色模式、番茄钟、数据导入、任务模板、键盘快捷键、计时器持久化
+// ==================== 周迹前端 v3.0 - 增量改进版 ====================
+// 基于 v2.4 稳定版增量开发
+// 版本：2026-06-28-2200
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -339,7 +340,8 @@ const routes = {
   'time-blocks': renderTimeBlocks, 'lab': renderLab,
   'assistant': function() { return window.renderAssistant.apply(this, arguments); },
   'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
-  'settings': renderSettings
+  'settings': renderSettings,
+  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); }
 };
 
 // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
@@ -521,6 +523,9 @@ function renderNav() {
         <i class="fas fa-sign-out-alt"></i>
         <span>退出登录</span>
       </button>
+      <div class="px-3 py-2 text-center">
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2200</span>
+      </div>
     </div>
   </div>`;
 

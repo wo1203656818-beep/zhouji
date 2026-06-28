@@ -80,7 +80,7 @@ async function loadDiaryEntries() {
     }
     
     const data = await api.get(url);
-    diaryEntries = data.entries || [];
+    diaryEntries = (data.entries || []).filter(e => e.template_type !== 'inspiration');
     const container = $('#diary-list');
     
     if (!diaryEntries.length) {

@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2305
+// 版本：2026-06-28-2231
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -468,6 +468,7 @@ function renderNav() {
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
+    { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
   ];
   
   const mobileItems = [
@@ -475,7 +476,7 @@ function renderNav() {
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'assistant', icon: 'fa-headphones', label: '辅助' },
+    { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
   ];
   
   const current = state.currentPage;
@@ -524,7 +525,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2305</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2231</span>
       </div>
     </div>
   </div>`;

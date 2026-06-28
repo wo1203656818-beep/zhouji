@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2200
+// 版本：2026-06-28-2305
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -341,7 +341,8 @@ const routes = {
   'assistant': function() { return window.renderAssistant.apply(this, arguments); },
   'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
   'settings': renderSettings,
-  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); }
+  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); },
+  'inspiration': function() { return (window.renderInspiration || renderInspiration).apply(this, arguments); }
 };
 
 // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
@@ -467,7 +468,7 @@ function renderNav() {
     { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
-    { id: 'assistant', icon: 'fa-lightbulb', label: '灵感记录' },
+    { id: 'inspiration', icon: 'fa-lightbulb', label: '灵感' },
   ];
   
   const mobileItems = [
@@ -475,7 +476,7 @@ function renderNav() {
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'assistant', icon: 'fa-lightbulb', label: '灵感' },
+    { id: 'inspiration', icon: 'fa-lightbulb', label: '灵感' },
   ];
   
   const current = state.currentPage;
@@ -524,7 +525,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2200</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2305</span>
       </div>
     </div>
   </div>`;

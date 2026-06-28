@@ -12,7 +12,14 @@
   <meta name="robots" content="index, follow">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%234F46E5' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='serif'%3E周%3C/text%3E%3C/svg%3E">
-  <title>周迹 - 拖延症干预系统 v2.4</title>
+  <title>周迹 v2026.06.28-2305 - 拖延症干预系统</title>
+  
+  <!-- 资源预连接：加速外部CDN加载 -->
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+  <link rel="dns-prefetch" href="https://cdn.sheetjs.com">
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   
   <!-- 部署配置 -->
   <script>
@@ -99,7 +106,18 @@
     </div>
   </noscript>
   
-  <div id="app"></div>
+  <div id="app">
+    <!-- 初始加载提示：app.js 加载期间显示 -->
+    <div class="min-h-screen flex items-center justify-center" id="app-loading">
+      <div class="flex flex-col items-center gap-4">
+        <div class="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg">
+          周
+        </div>
+        <div class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+        <p class="text-sm text-gray-500 dark:text-gray-400">周迹加载中...</p>
+      </div>
+    </div>
+  </div>
   
   <div id="loading" class="loading-overlay hidden">
     <div class="flex flex-col items-center gap-3">
@@ -110,15 +128,15 @@
 
   <!-- 加载外部JavaScript文件... -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="diary.js?v=202606282259"></script>
-  <script src="stats.js?v=202606282259"></script>
-  <script src="assistant.js?v=202606282259"></script>
-  <script src="social.js?v=202606282259"></script>
-  <script src="weekly.js?v=202606282259"></script>
-  <script src="fate-killer.js?v=202606282259"></script>
-  <script src="delivery-gap.js?v=202606282259"></script>
-  <script src="creator-studio.js?v=202606282259"></script>
-  <script src="app.js?v=202606282259"></script>
+  <script src="diary.js?v=202606282305"></script>
+  <script src="stats.js?v=202606282305"></script>
+  <script src="assistant.js?v=202606282305"></script>
+  <script src="social.js?v=202606282305"></script>
+  <script src="weekly.js?v=202606282305"></script>
+  <script src="fate-killer.js?v=202606282305"></script>
+  <script src="delivery-gap.js?v=202606282305"></script>
+  <script src="creator-studio.js?v=202606282305"></script>
+  <script src="app.js?v=202606282305"></script>
   
   <!-- PWA更新检测 -->
   <script>

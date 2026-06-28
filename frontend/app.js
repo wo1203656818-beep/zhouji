@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2259
+// 版本：2026-06-28-2305
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -527,7 +527,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2245</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2305</span>
       </div>
     </div>
   </div>`;

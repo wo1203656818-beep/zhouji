@@ -713,6 +713,7 @@ function toggleMobileMorePanel() {
 
   const moreItems = [
     { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
+    { id: 'assistant', icon: 'fa-headphones', label: '灵感' },
     { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
     { id: 'delivery-gap', icon: 'fa-motorcycle', label: '间隙' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },

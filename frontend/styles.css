@@ -165,6 +165,15 @@ main, .main-content { margin-left: 260px !important; padding-bottom: 20px !impor
 .bottom-nav { display: none !important; }
 .sidebar-overlay { display: none !important; }
 
+/* ── Tablet View (769px - 1024px) ── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .sidebar { width: 220px !important; }
+  main, .main-content { margin-left: 220px !important; }
+  .sidebar-brand { padding: 20px 16px 16px; }
+  .nav-item { padding: 10px 12px; font-size: 13px; }
+  .nav-item i { font-size: 14px; }
+}
+
 @media (max-width: 768px) {
   .sidebar { transform: translateX(-260px) !important; transition: transform 0.3s cubic-bezier(0.4,0,0.2,1) !important; }
   .sidebar.mobile-show { transform: translateX(0) !important; }

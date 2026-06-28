@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2325
+// 版本：2026-06-28-2330
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -552,12 +552,13 @@ function renderNav() {
     { id: 'delivery-gap', icon: 'fa-motorcycle', label: '间隙利用' },
   ];
   
+  // 平板/手机：底部导航只显示5个最常用的，其余在"更多"里
   const mobileItems = [
     { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表' },
-    { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
+    { id: 'diary', icon: 'fa-book', label: '日记' },
+    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
   ];
   
   const current = state.currentPage;
@@ -606,7 +607,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2325</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2330</span>
       </div>
     </div>
   </div>`;
@@ -671,7 +672,7 @@ function toggleMobileMorePanel() {
   panel = document.createElement('div');
   panel.className = 'mobile-more-panel';
   const isDark = state.darkMode;
-  panel.style.cssText = `
+    panel.style.cssText = `
     position: fixed !important;
     bottom: 70px !important;
     left: 12px !important;
@@ -682,18 +683,21 @@ function toggleMobileMorePanel() {
     padding: 16px;
     box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
+    max-height: 50vh;
+    overflow-y: auto;
   `;
 
   const moreItems = [
     { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
-    { id: 'assistant', icon: 'fa-robot', label: '助手' },
+    { id: 'assistant', icon: 'fa-headphones', label: '辅助' },
     { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
+    { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
+    { id: 'delivery-gap', icon: 'fa-motorcycle', label: '间隙' },
     { id: 'settings', icon: 'fa-cog', label: '设置' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
-    { id: 'share', icon: 'fa-share-alt', label: '分享' },
     { action: 'darkMode', icon: isDark ? 'fa-sun' : 'fa-moon', label: isDark ? '亮色' : '暗色' },
   ];
 

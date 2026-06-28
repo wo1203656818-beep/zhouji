@@ -114,6 +114,7 @@ function showConfirmModal(msg, confirmText, cancelText) {
     setTimeout(function() { document.getElementById('modal-confirm-btn').focus(); }, 50);
     function close(result) {
       backdrop.remove();
+      document.removeEventListener('keydown', keyHandler);
       if (previousActive && previousActive.focus) previousActive.focus();
       resolve(result);
     }
@@ -121,7 +122,7 @@ function showConfirmModal(msg, confirmText, cancelText) {
     document.getElementById('modal-cancel-btn').onclick = function() { close(false); };
     backdrop.onclick = function(e) { if (e.target === backdrop) close(false); };
     // Escape 关闭
-    var keyHandler = function(e) { if (e.key === 'Escape') { close(false); document.removeEventListener('keydown', keyHandler); } };
+    var keyHandler = function(e) { if (e.key === 'Escape') { close(false); } };
     document.addEventListener('keydown', keyHandler);
     // Tab 焦点循环
     backdrop.addEventListener('keydown', function(e) {
@@ -214,7 +215,12 @@ const api = {
       console.log('[api] 缓存已清空');
     } else {
       for (var key of this._cache.keys()) {
-        if (key.startsWith(prefix)) this._cache.delete(key);
+        // key 格式 "METHOD:/api/path"，提取路径部分匹配
+        var colonIdx = key.indexOf(':');
+        var keyPath = colonIdx >= 0 ? key.substring(colonIdx + 1) : key;
+        if (keyPath.startsWith(prefix) || key.startsWith(prefix)) {
+          this._cache.delete(key);
+        }
       }
       console.log('[api] 已清除缓存:', prefix);
     }
@@ -409,11 +415,10 @@ function saveTimerState() {
 const routes = {
   'login': renderLogin, 'dashboard': renderDashboard,
   'tasks': renderTasks, 'task-detail': renderTaskDetail,
+  'focus': renderFocus,
   'micro-start': renderMicroStart,
   'pomodoro': renderPomodoro,
   'emotion': renderEmotion,
-  'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
-  'time-blocks': renderTimeBlocks, 'lab': renderLab,
   'settings': renderSettings,
   // 延迟加载的功能（按需加载）
   'weekly': () => loadAndRender('weekly', 'weekly.js', 'renderWeekly'),
@@ -558,16 +563,11 @@ function renderNav() {
     { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表盘' },
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务台' },
-    { id: 'micro-start', icon: 'fa-play-circle', label: '微启动' },
+    { id: 'focus', icon: 'fa-play-circle', label: '专注' },
     { id: 'diary', icon: 'fa-book', label: '日记' },
     { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
-    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄钟' },
-    { id: 'emotion', icon: 'fa-heart', label: '情绪舱' },
     { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
-    { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
-    { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
-    { id: 'lab', icon: 'fa-flask', label: '实验室' },
-    { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
+    { id: 'assistant', icon: 'fa-headphones', label: '灵感记录' },
     { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
     { id: 'delivery-gap', icon: 'fa-motorcycle', label: '间隙利用' },
   ];
@@ -576,9 +576,9 @@ function renderNav() {
   const mobileItems = [
     { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
-    { id: 'micro-start', icon: 'fa-play', label: '启动' },
+    { id: 'focus', icon: 'fa-play', label: '专注' },
     { id: 'diary', icon: 'fa-book', label: '日记' },
-    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
+    { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
   ];
   
   const current = state.currentPage;
@@ -627,12 +627,14 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2335</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.29-0110</span>
+        <div id="backup-status" class="mt-1"></div>
       </div>
     </div>
   </div>`;
 
   nav.innerHTML = html;
+  setTimeout(updateBackupStatus, 200);
   return nav;
 }
 
@@ -656,8 +658,8 @@ function renderMobileNav() {
     { id: 'dashboard', icon: 'fa-chart-pie', label: '仪表' },
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
-    { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
+    { id: 'focus', icon: 'fa-play', label: '专注' },
+    { id: 'diary', icon: 'fa-book', label: '日记' },
   ];
 
   let html = '';
@@ -710,14 +712,11 @@ function toggleMobileMorePanel() {
   `;
 
   const moreItems = [
-    { id: 'diary', icon: 'fa-book', label: '日记' },
-    { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
-    { id: 'assistant', icon: 'fa-headphones', label: '辅助' },
     { id: 'fate-killer', icon: 'fa-bolt', label: '反命计划' },
     { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
     { id: 'delivery-gap', icon: 'fa-motorcycle', label: '间隙' },
+    { id: 'stats', icon: 'fa-chart-bar', label: '数据' },
     { id: 'settings', icon: 'fa-cog', label: '设置' },
-    { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { action: 'darkMode', icon: isDark ? 'fa-sun' : 'fa-moon', label: isDark ? '亮色' : '暗色' },
   ];
 
@@ -942,9 +941,9 @@ function getPriorityStyle(priority) {
 }
 
 function showToast(message, type = 'success') {
-  // 同一条消息不重复显示
-  var existing = document.querySelector('.toast-notification[data-message="' + escapeHtml(message) + '"][data-type="' + escapeHtml(type) + '"]');
-  if (existing) return;
+  // 同一条消息不重复显示（遍历查找避免 escapeHtml 导致属性选择器失效）
+  var existing = document.querySelector('.toast-notification[data-type="' + type + '"]');
+  if (existing && existing.dataset.message === message) return;
 
   const colors = { success: 'bg-secondary text-white', error: 'bg-danger text-white', warning: 'bg-accent text-white', info: 'bg-calm text-white' };
   // 移动端：小屏、居中顶部；桌面端：正常尺寸
@@ -1047,6 +1046,7 @@ async function renderDashboard() {
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
+        <!-- 主区域：待启动 + 趋势 -->
         <div class="lg:col-span-2 space-y-3">
           <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
             <div class="flex items-center justify-between mb-2">
@@ -1064,136 +1064,138 @@ async function renderDashboard() {
                 </div>
               `).join('')}
           </div>
-
-          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
-            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <i class="fas fa-chart-bar text-blue-500" style="font-size:11px"></i> 近7天趋势
-            </h3>
-            <div class="h-20 flex items-end gap-1">
-              ${weekly.map((d, i) => {
-                const max = Math.max(...weekly.map(x => Math.max(x.tasks_completed||0, x.micro_starts_count||0, x.procrastination_count||0, x.pomodoro_count||0))) || 1;
-                return `<div class="flex-1 flex flex-col items-center gap-0.5">
-                  <div class="w-full flex gap-px h-16 items-end">
-                    <div class="flex-1 bg-secondary/60 rounded-t" style="height:${Math.max(4,Math.round(((d.tasks_completed||0)/max)*100))}%"></div>
-                    <div class="flex-1 bg-primary/60 rounded-t" style="height:${Math.max(4,Math.round(((d.micro_starts_count||0)/max)*100))}%"></div>
-                    <div class="flex-1 bg-accent/60 rounded-t" style="height:${Math.max(4,Math.round(((d.procrastination_count||0)/max)*100))}%"></div>
-                    <div class="flex-1 bg-danger/60 rounded-t" style="height:${Math.max(4,Math.round(((d.pomodoro_count||0)/max)*100))}%"></div>
-                  </div>
-                  <span class="text-[9px] text-gray-400">${d.stat_date?.slice(5) || ''}</span>
-                </div>`;
-              }).join('')}
-            </div>
-            <div class="flex gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500 justify-center">
-              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-secondary/60"></span>完成</span>
-              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-primary/60"></span>启动</span>
-              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-accent/60"></span>拖延</span>
-              <span class="flex items-center gap-0.5"><span class="w-2 h-2 rounded bg-danger/60"></span>番茄</span>
-            </div>
-          </div>
         </div>
 
+        <!-- 右侧：快捷操作 + 更多洞察折叠 -->
         <div class="lg:col-span-1 space-y-3">
-          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
-            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <i class="fas fa-heart text-rose-500" style="font-size:11px"></i> 情绪
-            </h3>
-            ${emotion ? `
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-xl">${getEmotionEmoji(emotion.emotion_type)}</span>
-                <div>
-                  <p class="text-xs font-semibold text-gray-700 dark:text-gray-300">${getEmotionLabel(emotion.emotion_type)}</p>
-                  <p class="text-[10px] text-gray-400">${new Date(emotion.created_at).toLocaleString('zh-CN')}</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] text-gray-400">能量</span>
-                <div class="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-rose-400 to-green-400 rounded-full" style="width:${(emotion.energy_level/5)*100}%"></div>
-                </div>
-                <span class="text-[10px] font-semibold text-gray-600 dark:text-gray-400">${emotion.energy_level}/5</span>
-              </div>
-            ` : '<p class="text-xs text-gray-400 py-2">暂无记录</p>'}
-            <button onclick="navigate('emotion')" class="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 transition-all">${emotion ? '扫描' : '情绪扫描'}</button>
-          </div>
-
           <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
             <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1"><i class="fas fa-bolt text-amber-500" style="font-size:11px"></i> 快捷</h3>
             <div class="grid grid-cols-2 gap-1.5">
-              <button onclick="navigate('micro-start')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-play" style="font-size:10px"></i> 启动</button>
-              <button onclick="navigate('pomodoro')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-stopwatch" style="font-size:10px"></i> 番茄</button>
+              <button onclick="navigate('focus')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-play" style="font-size:10px"></i> 专注</button>
               <button onclick="navigate('tasks')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-cut" style="font-size:10px"></i> 拆解</button>
-              <button onclick="navigate('lab')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-microscope" style="font-size:10px"></i> 拖延</button>
+              <button onclick="navigate('diary')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-book" style="font-size:10px"></i> 日记</button>
+              <button onclick="navigate('creator-studio')" class="flex items-center gap-1.5 py-1.5 px-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 transition-all text-left text-[11px] font-medium"><i class="fas fa-video" style="font-size:10px"></i> 创作</button>
             </div>
           </div>
 
-          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
-            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <i class="fas fa-fire text-orange-500" style="font-size:11px"></i> 今日概况
-            </h3>
-            <div class="space-y-1.5">
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-500">已完成任务</span>
-                <span class="font-semibold text-gray-700 dark:text-gray-300">${todayTasksCompleted} / ${todayTasksTotal}</span>
+          <!-- 更多洞察折叠 -->
+          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
+            <button onclick="toggleDashboardInsights()" class="w-full flex items-center justify-between p-3 text-left">
+              <span class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1"><i class="fas fa-chart-simple text-blue-500" style="font-size:11px"></i> 更多洞察</span>
+              <i class="fas fa-chevron-down text-gray-400 text-xs transition-transform" id="insights-arrow"></i>
+            </button>
+            <div id="dashboard-insights" class="px-3 pb-3 space-y-3" style="display:none">
+              <!-- 近7天趋势 -->
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                <h3 class="font-semibold text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                  <i class="fas fa-chart-bar text-blue-500" style="font-size:10px"></i> 近7天趋势
+                </h3>
+                <div class="h-16 flex items-end gap-1">
+                  ${weekly.map((d, i) => {
+                    const max = Math.max(...weekly.map(x => Math.max(x.tasks_completed||0, x.micro_starts_count||0, x.procrastination_count||0, x.pomodoro_count||0))) || 1;
+                    return `<div class="flex-1 flex flex-col items-center gap-0.5">
+                      <div class="w-full flex gap-px h-12 items-end">
+                        <div class="flex-1 bg-secondary/60 rounded-t" style="height:${Math.max(4,Math.round(((d.tasks_completed||0)/max)*100))}%"></div>
+                        <div class="flex-1 bg-primary/60 rounded-t" style="height:${Math.max(4,Math.round(((d.micro_starts_count||0)/max)*100))}%"></div>
+                        <div class="flex-1 bg-accent/60 rounded-t" style="height:${Math.max(4,Math.round(((d.procrastination_count||0)/max)*100))}%"></div>
+                        <div class="flex-1 bg-danger/60 rounded-t" style="height:${Math.max(4,Math.round(((d.pomodoro_count||0)/max)*100))}%"></div>
+                      </div>
+                      <span class="text-[8px] text-gray-400">${d.stat_date?.slice(5) || ''}</span>
+                    </div>`;
+                  }).join('')}
+                </div>
+                <div class="flex gap-2 mt-1 text-[9px] text-gray-400 dark:text-gray-500 justify-center">
+                  <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded bg-secondary/60"></span>完成</span>
+                  <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded bg-primary/60"></span>启动</span>
+                  <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded bg-accent/60"></span>拖延</span>
+                  <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded bg-danger/60"></span>番茄</span>
+                </div>
               </div>
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-500">番茄专注</span>
-                <span class="font-semibold text-gray-700 dark:text-gray-300">${totalPomo} 轮</span>
-              </div>
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-500">本周连胜</span>
-                <span class="font-semibold text-green-600">${streakDays} 天</span>
-              </div>
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-500">启动率</span>
-                <span class="font-semibold text-gray-700 dark:text-gray-300">${startRate}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div class="lg:col-span-1 space-y-3">
-          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                <i class="fas fa-mountain text-orange-500" style="font-size:11px"></i> 时间
-              </h3>
-              <button onclick="navigate('time-blocks')" class="text-[10px] text-indigo-500 hover:text-indigo-600">管理</button>
-            </div>
-            <div class="h-16 bg-gray-50 dark:bg-gray-700/50 rounded-lg overflow-hidden relative">${renderTimeTerrain(blocks)}</div>
-          </div>
-
-          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
-            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <i class="fas fa-exclamation-circle text-amber-500" style="font-size:11px"></i> 到期
-            </h3>
-            ${data.upcomingTasks && data.upcomingTasks.length > 0 ? data.upcomingTasks.slice(0, 4).map(task => {
-              var isOverdue = new Date(task.due_date + 'T23:59:59') < new Date();
-              return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-50 dark:border-gray-700/30 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/20 rounded px-1" onclick="navigate('task-detail', {id: ${task.id}})">
-                <span class="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate">${task.title}</span>
-                <span class="text-[10px] ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'}">${isOverdue ? '已过期' : task.due_date}</span>
-              </div>`;
-            }).join('') : '<p class="text-xs text-gray-400 text-center py-6">无到期任务</p>'}
-          </div>
-
-          <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 shadow-sm">
-            <h3 class="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-              <i class="fas fa-tasks text-green-500" style="font-size:11px"></i> 任务池
-            </h3>
-            <div class="space-y-1.5">
-              <div class="flex items-center gap-2 text-xs">
-                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span class="text-gray-500">待完成</span>
-                <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='pending').length}</span>
+              <!-- 情绪 -->
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                <h3 class="font-semibold text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                  <i class="fas fa-heart text-rose-500" style="font-size:10px"></i> 情绪
+                </h3>
+                ${emotion ? `
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-lg">${getEmotionEmoji(emotion.emotion_type)}</span>
+                    <div>
+                      <p class="text-xs font-semibold text-gray-700 dark:text-gray-300">${getEmotionLabel(emotion.emotion_type)}</p>
+                      <p class="text-[9px] text-gray-400">${new Date(emotion.created_at).toLocaleString('zh-CN')}</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[9px] text-gray-400">能量</span>
+                    <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                      <div class="h-full bg-gradient-to-r from-rose-400 to-green-400 rounded-full" style="width:${(emotion.energy_level/5)*100}%"></div>
+                    </div>
+                    <span class="text-[9px] font-semibold text-gray-600 dark:text-gray-400">${emotion.energy_level}/5</span>
+                  </div>
+                ` : '<p class="text-xs text-gray-400 py-2">暂无记录</p>'}
               </div>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                <span class="text-gray-500">进行中</span>
-                <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='in_progress').length}</span>
+
+              <!-- 今日概况 -->
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                <h3 class="font-semibold text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                  <i class="fas fa-fire text-orange-500" style="font-size:10px"></i> 今日概况
+                </h3>
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-gray-500">已完成任务</span>
+                    <span class="font-semibold text-gray-700 dark:text-gray-300">${todayTasksCompleted} / ${todayTasksTotal}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-gray-500">番茄专注</span>
+                    <span class="font-semibold text-gray-700 dark:text-gray-300">${totalPomo} 轮</span>
+                  </div>
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-gray-500">本周连胜</span>
+                    <span class="font-semibold text-green-600">${streakDays} 天</span>
+                  </div>
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-gray-500">启动率</span>
+                    <span class="font-semibold text-gray-700 dark:text-gray-300">${startRate}%</span>
+                  </div>
+                </div>
               </div>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="w-2 h-2 rounded-full bg-green-400"></span>
-                <span class="text-gray-500">已完成</span>
-                <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='completed').length}</span>
+
+              <!-- 到期任务 -->
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                <h3 class="font-semibold text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                  <i class="fas fa-exclamation-circle text-amber-500" style="font-size:10px"></i> 到期
+                </h3>
+                ${data.upcomingTasks && data.upcomingTasks.length > 0 ? data.upcomingTasks.slice(0, 4).map(task => {
+                  var isOverdue = new Date(task.due_date + 'T23:59:59') < new Date();
+                  return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-100 dark:border-gray-700/30 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/20 rounded px-1" onclick="navigate('task-detail', {id: ${task.id}})">
+                    <span class="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate">${task.title}</span>
+                    <span class="text-[10px] ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'}">${isOverdue ? '已过期' : task.due_date}</span>
+                  </div>`;
+                }).join('') : '<p class="text-xs text-gray-400 text-center py-4">无到期任务</p>'}
+              </div>
+
+              <!-- 任务池 -->
+              <div class="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                <h3 class="font-semibold text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                  <i class="fas fa-tasks text-green-500" style="font-size:10px"></i> 任务池
+                </h3>
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2 text-[11px]">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                    <span class="text-gray-500">待完成</span>
+                    <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='pending').length}</span>
+                  </div>
+                  <div class="flex items-center gap-2 text-[11px]">
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                    <span class="text-gray-500">进行中</span>
+                    <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='in_progress').length}</span>
+                  </div>
+                  <div class="flex items-center gap-2 text-[11px]">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                    <span class="text-gray-500">已完成</span>
+                    <span class="ml-auto font-semibold text-gray-700 dark:text-gray-300">${(data.tasks||[]).filter(t=>t.status==='completed').length}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1317,6 +1319,7 @@ async function loadEmotionHistory() {
   try {
     const data = await api.get('/api/emotions');
     const container = $('#emotion-history');
+    if (!container) return;
     if (!data.emotions?.length) { container.innerHTML = '<p class="text-gray-400 dark:text-gray-500 text-center py-4">暂无记录</p>'; return; }
     container.innerHTML = data.emotions.slice(0, 10).map(e => `
       <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50">
@@ -1427,6 +1430,7 @@ async function loadTasks(append) {
     }
     
     const container = $('#tasks-list');
+    if (!container) return;
     if (!state.tasks.length) {
       container.innerHTML = `<div class="text-center py-12"><i class="fas fa-clipboard text-4xl text-gray-300 dark:text-gray-600 mb-4"></i><p class="text-gray-500 dark:text-gray-400">还没有任务</p><button onclick="showTaskModal()" class="mt-4 text-primary font-medium">创建第一个任务</button></div>`;
       return;
@@ -1483,7 +1487,11 @@ async function loadTasks(append) {
     }
   } catch (err) {
     taskLoadingMore = false;
-    $('#tasks-list').innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTasks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+    taskPage = Math.max(1, taskPage - 1); // 回滚页码
+    const tasksList = $('#tasks-list');
+    if (tasksList) {
+      tasksList.innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTasks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+    }
   }
 }
 
@@ -1671,7 +1679,8 @@ async function deleteTask(id) {
 
 function quickMicroStart(taskId) {
   state.activeTask = taskId;
-  navigate('micro-start');
+  state._focusMode = 'micro';
+  navigate('focus');
 }
 
 // ========== 任务详情 ==========
@@ -1776,8 +1785,23 @@ async function updateTaskPriority(taskId, priority) {
 }
 async function toggleStep(stepId, currentStatus) {
   const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-  try { await api.put(`/api/steps/${stepId}`, { status: newStatus }); navigate('task-detail', { id: state.pageParams.id }); }
-  catch (err) { showToast(err.message, 'error'); }
+  try {
+    await api.put(`/api/steps/${stepId}`, { status: newStatus });
+    // 本地即时切换样式+动画，400ms后刷新
+    var cards = document.querySelectorAll('.step-card');
+    cards.forEach(function(c) {
+      var btn = c.querySelector('button');
+      if (btn && btn.getAttribute('onclick') && btn.getAttribute('onclick').includes('toggleStep(' + stepId + ',')) {
+        if (newStatus === 'completed') {
+          c.style.transition = 'all 0.3s ease';
+          c.style.opacity = '0.6';
+          c.style.transform = 'scale(0.98)';
+          setTimeout(function() { c.style.opacity = '1'; c.style.transform = 'scale(1)'; }, 300);
+        }
+      }
+    });
+    setTimeout(function() { navigate('task-detail', { id: state.pageParams.id }); }, 400);
+  } catch (err) { showToast(err.message, 'error'); }
 }
 function showStepModal(taskId) {
   const modal = el('div', 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 modal-backdrop');
@@ -1846,6 +1870,38 @@ function getTaskShortLabel(desc) {
   if (!desc || desc.indexOf('[周视图导入]') !== 0) return '';
   var parts = desc.replace('[周视图导入] ', '').split(' | ');
   return parts[0] || '';
+}
+
+function renderFocus() {
+  const div = el('div', 'p-4 md:p-8 max-w-2xl mx-auto fade-in');
+  const focusMode = state._focusMode || 'micro';
+  div.innerHTML = `
+    <div class="flex items-center gap-2 mb-6">
+      <button class="px-4 py-2 rounded-xl text-sm font-medium transition-all ${focusMode === 'micro' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}" onclick="switchFocusMode('micro')"><i class="fas fa-play mr-1"></i>2分钟契约</button>
+      <button class="px-4 py-2 rounded-xl text-sm font-medium transition-all ${focusMode === 'pomo' ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}" onclick="switchFocusMode('pomo')"><i class="fas fa-stopwatch mr-1"></i>番茄钟</button>
+    </div>
+    <div id="focus-content"></div>
+  `;
+  setTimeout(() => {
+    const content = $('#focus-content');
+    if (!content) return;
+    if (focusMode === 'micro') {
+      content.innerHTML = '';
+      content.appendChild(renderMicroStart());
+      // 重新初始化微启动
+      if (typeof loadMicroTaskOptions === 'function') loadMicroTaskOptions();
+    } else {
+      content.innerHTML = '';
+      content.appendChild(renderPomodoro());
+      if (typeof loadPomoTaskOptions === 'function') loadPomoTaskOptions();
+    }
+  }, 50);
+  return div;
+}
+
+function switchFocusMode(mode) {
+  state._focusMode = mode;
+  navigate('focus');
 }
 
 function renderMicroStart() {
@@ -1928,11 +1984,15 @@ timerStartTime = null; // timerInterval/timerSeconds/timerTotal/timerRunning 已
 function resumeTimerUI() {
   // 修复: 恢复前先清除可能残留的旧 interval
   if (timerInterval) clearInterval(timerInterval);
-  $('#timer-btn-start').classList.add('hidden');
-  $('#timer-btn-stop').classList.remove('hidden');
-  $('#timer-btn-done').classList.remove('hidden');
-  $('#timer-status').textContent = '契约进行中...';
-  $('#timer-status').classList.add('text-primary', 'font-medium');
+  var startBtn = $('#timer-btn-start');
+  var stopBtn = $('#timer-btn-stop');
+  var doneBtn = $('#timer-btn-done');
+  var status = $('#timer-status');
+  startBtn.classList.add('hidden');
+  stopBtn.classList.remove('hidden');
+  doneBtn.classList.remove('hidden');
+  status.textContent = '契约进行中...';
+  status.classList.add('text-primary', 'font-medium');
 
   // 修复 FE-009: 使用 Date.now() 差值计算，避免 setInterval 漂移
   // 使用全局 timerStartTime 以便 finishTimer 可以访问
@@ -1947,8 +2007,8 @@ function resumeTimerUI() {
     if (timerSeconds <= 0) { 
       clearInterval(timerInterval); 
       timerRunning = false; 
-      $('#timer-status').textContent = '契约完成！你可以选择继续或停止'; 
-      $('#timer-status').classList.add('text-secondary'); 
+      status.textContent = '契约完成！你可以选择继续或停止'; 
+      status.classList.add('text-secondary'); 
       showToast('2分钟契约已完成！🎉'); 
       safeStorage.remove('timer_state'); 
     }
@@ -1962,8 +2022,9 @@ function startTimer() {
 }
 function stopTimer() {
   clearInterval(timerInterval); timerRunning = false;
-  $('#timer-btn-start').classList.remove('hidden');
-  $('#timer-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>继续';
+  var startBtn = $('#timer-btn-start');
+  startBtn.classList.remove('hidden');
+  startBtn.innerHTML = '<i class="fas fa-play mr-2"></i>继续';
   $('#timer-btn-stop').classList.add('hidden');
   $('#timer-status').textContent = '已暂停';
   saveTimerState();
@@ -1987,7 +2048,8 @@ async function finishTimer(continued) {
       autoCheckAchievements();
     }
     timerSeconds = timerTotal; updateTimerDisplay();
-    $('#timer-btn-start').classList.remove('hidden'); $('#timer-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>开始契约';
+    var startBtn = $('#timer-btn-start');
+    startBtn.classList.remove('hidden'); startBtn.innerHTML = '<i class="fas fa-play mr-2"></i>开始契约';
     $('#timer-btn-stop').classList.add('hidden'); $('#timer-btn-done').classList.add('hidden');
     $('#timer-status').textContent = '准备开始'; $('#timer-status').classList.remove('text-primary', 'text-secondary', 'font-medium');
     state.activeTask = null; state.activeStep = null; safeStorage.remove('timer_state');
@@ -2090,11 +2152,15 @@ function getPomoDurations() {
 
 function startPomodoro() {
   pomoRunning = true;
-  $('#pomo-btn-start').classList.add('hidden');
-  $('#pomo-btn-pause').classList.remove('hidden');
-  $('#pomo-btn-skip').classList.remove('hidden');
-  $('#pomo-mode').textContent = pomoMode === 'work' ? '专注时间' : pomoMode === 'short_break' ? '短休息' : '长休息';
-  $('#pomo-mode').className = `text-sm font-medium mt-2 ${pomoMode === 'work' ? 'text-danger' : 'text-secondary'}`;
+  var startBtn = $('#pomo-btn-start');
+  var pauseBtn = $('#pomo-btn-pause');
+  var skipBtn = $('#pomo-btn-skip');
+  var mode = $('#pomo-mode');
+  startBtn.classList.add('hidden');
+  pauseBtn.classList.remove('hidden');
+  skipBtn.classList.remove('hidden');
+  mode.textContent = pomoMode === 'work' ? '专注时间' : pomoMode === 'short_break' ? '短休息' : '长休息';
+  mode.className = `text-sm font-medium mt-2 ${pomoMode === 'work' ? 'text-danger' : 'text-secondary'}`;
   document.querySelector('#pomo-timer-container')?.classList.add(pomoMode === 'work' ? 'pomodoro-active' : 'pomodoro-break');
 
   // 修复 FE-009: 使用 Date.now() 差值计算，避免 setInterval 漂移
@@ -2116,7 +2182,8 @@ function startPomodoro() {
 
 function pausePomodoro() {
   clearInterval(pomoInterval); pomoRunning = false;
-  $('#pomo-btn-start').classList.remove('hidden'); $('#pomo-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>继续';
+  var startBtn = $('#pomo-btn-start');
+  startBtn.classList.remove('hidden'); startBtn.innerHTML = '<i class="fas fa-play mr-2"></i>继续';
   $('#pomo-btn-pause').classList.add('hidden');
   document.querySelector('#pomo-timer-container')?.classList.remove('pomodoro-active', 'pomodoro-break');
 }
@@ -2131,7 +2198,8 @@ function resetPomodoro() {
   const d = getPomoDurations();
   pomoMode = 'work'; pomoSeconds = d.work; pomoTotal = d.work; pomoRound = 1;
   updatePomoDisplay();
-  $('#pomo-btn-start').classList.remove('hidden'); $('#pomo-btn-start').innerHTML = '<i class="fas fa-play mr-2"></i>开始专注';
+  var startBtn = $('#pomo-btn-start');
+  startBtn.classList.remove('hidden'); startBtn.innerHTML = '<i class="fas fa-play mr-2"></i>开始专注';
   $('#pomo-btn-pause').classList.add('hidden'); $('#pomo-btn-skip').classList.add('hidden');
   $('#pomo-mode').textContent = '专注时间'; $('#pomo-mode').className = 'text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium';
   document.querySelector('.relative.w-48')?.classList.remove('pomodoro-active', 'pomodoro-break');
@@ -2176,7 +2244,8 @@ async function completePomodoroRound(skipped = false) {
   pomoTotal = pomoSeconds;
   updatePomoDisplay();
 
-  $('#pomo-btn-start').classList.remove('hidden'); $('#pomo-btn-start').innerHTML = `<i class="fas fa-play mr-2"></i>开始${pomoMode === 'work' ? '专注' : '休息'}`;
+  var startBtn = $('#pomo-btn-start');
+  startBtn.classList.remove('hidden'); startBtn.innerHTML = `<i class="fas fa-play mr-2"></i>开始${pomoMode === 'work' ? '专注' : '休息'}`;
   $('#pomo-btn-pause').classList.add('hidden'); $('#pomo-btn-skip').classList.add('hidden');
   $('#pomo-mode').textContent = pomoMode === 'work' ? '专注时间' : pomoMode === 'short_break' ? '短休息' : '长休息';
   document.querySelector('.relative.w-48')?.classList.remove('pomodoro-active', 'pomodoro-break');
@@ -2230,7 +2299,9 @@ async function loadLabData() {
     const continueRate = microStats?.total > 0 ? Math.round((microStats.continued_count / microStats.total) * 100) : 0;
     const pomoStats = p.pomodoroStats;
 
-    $('#lab-content').innerHTML = `
+    const labContent = $('#lab-content');
+    if (!labContent) return;
+    labContent.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
         <div class="card-modern p-5">
           <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-1">任务完成率</p>
@@ -2293,7 +2364,8 @@ async function loadLabData() {
       </div>
     `;
   } catch (err) {
-    $('#lab-content').innerHTML = `<div class="text-center py-12 text-danger">分析失败: ${err.message}</div>`;
+    const labContent = $('#lab-content');
+    if (labContent) labContent.innerHTML = `<div class="text-center py-12 text-danger">分析失败: ${err.message}</div>`;
   }
 }
 
@@ -2346,11 +2418,13 @@ async function loadCommitments() {
   try {
     const data = await api.get('/api/commitments');
     const container = $('#commitments-list');
+    if (!container) return;
     if (!data.commitments?.length) {
       container.innerHTML = `<div class="text-center py-12"><i class="fas fa-handshake text-4xl text-gray-300 dark:text-gray-600 mb-4"></i><p class="text-gray-500 dark:text-gray-400">还没有承诺</p><p class="text-sm text-gray-400 dark:text-gray-500 mt-1">向自己或朋友承诺一个"2分钟启动"</p></div>`;
       return;
     }
-    container.innerHTML = data.commitments.map(c => `
+    const commitments = data.commitments.slice(0, 30);
+    container.innerHTML = commitments.map(c => `
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 ${c.completed ? 'opacity-60' : ''}">
         <div class="flex items-start justify-between mb-3">
           <div class="flex items-center gap-3">
@@ -2368,8 +2442,12 @@ async function loadCommitments() {
         </div>
       </div>
     `).join('');
+    if (data.commitments.length > 30) {
+      container.insertAdjacentHTML('beforeend', '<div class="text-center py-3 text-xs text-gray-400 dark:text-gray-500">共 ' + data.commitments.length + ' 条承诺，显示最新 30 条</div>');
+    }
   } catch (err) {
-    $('#commitments-list').innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadCommitments()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+    const container = $('#commitments-list');
+    if (container) container.innerHTML = '<div class="text-center py-12 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadCommitments()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
 }
 
@@ -2519,6 +2597,7 @@ async function loadTimeBlocks() {
     const date = $('#timeblock-date').value;
     const data = await api.get(`/api/time-blocks?date=${date}`);
     const container = $('#timeblocks-timeline');
+    if (!container) return;
     const blocks = data.timeBlocks || [];
     if (!blocks.length) {
       container.innerHTML = `<div class="text-center py-8"><i class="fas fa-clock text-4xl text-gray-300 dark:text-gray-600 mb-4"></i><p class="text-gray-500 dark:text-gray-400">这一天还没有时间块</p><p class="text-sm text-gray-400 dark:text-gray-500 mt-1">添加工作、休息或运动时段</p></div>`;
@@ -2534,7 +2613,8 @@ async function loadTimeBlocks() {
       </div>
     `).join('');
   } catch (err) {
-    $('#timeblocks-timeline').innerHTML = '<div class="text-center py-8 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTimeBlocks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
+    const container = $('#timeblocks-timeline');
+    if (container) container.innerHTML = '<div class="text-center py-8 text-danger"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="mb-2">加载失败</p><button onclick="loadTimeBlocks()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-all touch-btn"><i class="fas fa-redo mr-1"></i>重试</button></div>';
   }
 }
 
@@ -3162,6 +3242,30 @@ function showImportModal() {
   document.body.appendChild(modal);
 }
 
+// 更新侧边栏备份状态显示
+function updateBackupStatus() {
+  var el = document.getElementById('backup-status');
+  if (!el) return;
+  var lastBackup = safeStorage.get('last_backup_time');
+  if (!lastBackup) {
+    el.innerHTML = '<span class="text-[10px] text-gray-400 dark:text-gray-600">尚未备份</span>';
+    return;
+  }
+  var diff = Date.now() - parseInt(lastBackup);
+  var hours = Math.floor(diff / 3600000);
+  var minutes = Math.floor((diff % 3600000) / 60000);
+  var label;
+  if (hours < 1) {
+    label = minutes + ' 分钟前';
+  } else if (hours < 24) {
+    label = hours + ' 小时前';
+  } else {
+    label = Math.floor(hours / 24) + ' 天前';
+  }
+  var color = hours < 24 ? 'text-emerald-400' : 'text-amber-400';
+  el.innerHTML = '<span class="text-[10px] ' + color + '"><i class="fas fa-cloud-upload-alt mr-0.5"></i>上次备份 ' + label + '</span>';
+}
+
 // ========== 一键备份/导出 ==========
 async function backupToCloud() {
   showToast('正在打包备份数据...', 'info');
@@ -3236,6 +3340,9 @@ async function backupToCloud() {
     URL.revokeObjectURL(url);
     
     showToast(`备份完成！包含 ${Object.keys(data.data).length} 类数据${attachmentCount > 0 ? ` + ${attachmentCount} 个附件` : ''}`, 'success');
+    // 记录备份时间
+    safeStorage.set('last_backup_time', Date.now().toString());
+    updateBackupStatus();
   } catch (err) {
     console.error('备份失败:', err);
     showToast('备份失败: ' + (err.message || err), 'error');
@@ -3819,6 +3926,17 @@ var dailyQuotes = [
 ];
 window._dailyQuote = dailyQuotes[Math.floor(Math.random() * dailyQuotes.length)];
 
+// 仪表盘"更多洞察"折叠切换
+function toggleDashboardInsights() {
+  var panel = document.getElementById('dashboard-insights');
+  var arrow = document.getElementById('insights-arrow');
+  if (!panel) return;
+  var isHidden = panel.style.display === 'none' || panel.style.display === '';
+  panel.style.display = isHidden ? 'block' : 'none';
+  if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+window.toggleDashboardInsights = toggleDashboardInsights;
+
 // ========== 全局键盘快捷键 ==========
 document.addEventListener('keydown', function(e) {
   // 不在输入框中才生效
@@ -3848,11 +3966,12 @@ window._quickAdd = function() {
   overlay.id = 'fk-quick-add-overlay';
   overlay.style.cssText = 'position:fixed;bottom:90px;right:20px;z-index:9998;background:var(--color-background-primary,#fff);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:16px;padding:16px;width:300px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.15);animation:fkSlideUp 0.2s ease;';
   overlay.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-    '<span style="font-weight:600;font-size:14px;">' + icon('bolt') + ' 快速记录</span>' +
+    '<span style="font-weight:600;font-size:14px;">' + icon('lightbulb') + ' 灵感速记</span>' +
     '<button onclick="document.getElementById(\'fk-quick-add-overlay\').remove()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;">' + '×' + '</button></div>' +
-    '<textarea id="fk-quick-input" placeholder="记下灵感、想法、待办..." style="width:100%;min-height:70px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;outline:none;box-sizing:border-box;margin-bottom:10px;"></textarea>' +
+    '<textarea id="fk-quick-input" placeholder="输入灵感、想法..." style="width:100%;min-height:70px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;outline:none;box-sizing:border-box;margin-bottom:10px;"></textarea>' +
     '<div style="display:flex;gap:6px;">' +
-    '<button onclick="window._quickSave(\'inspiration\')" style="flex:1;padding:7px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('lightbulb') + ' 存为灵感</button>' +
+    '<button onclick="window._quickSave(\'inspiration\')" style="flex:1;padding:7px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('lightbulb') + ' 保存灵感</button>' +
+    '<button onclick="window._quickSave(\'task\')" style="flex:1;padding:7px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('tasks') + ' 转为任务</button>' +
     '<button onclick="document.getElementById(\'fk-quick-add-overlay\').remove()" style="padding:7px 12px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + '取消' + '</button></div>';
   document.body.appendChild(overlay);
   setTimeout(function() {
@@ -3872,21 +3991,29 @@ window._quickSave = async function(type) {
         template_type: 'inspiration',
         is_private: true
       });
+      showToast('灵感已保存 ✨', 'success');
+    } else if (type === 'task') {
+      await api.post('/api/tasks', {
+        title: content,
+        description: '来自灵感速记',
+        priority: 3,
+        status: 'pending'
+      });
+      showToast('已创建任务 📋', 'success');
     }
-    showToast('已保存 ✅', 'success');
     document.getElementById('fk-quick-add-overlay')?.remove();
   } catch(e) {
     showToast('保存失败', 'error');
   }
 };
 
-// 添加Quick Add浮动球
+// 添加灵感记录浮动按钮（灯泡图标）
 (function() {
   var fab = document.createElement('div');
   fab.id = 'fk-fab';
-  fab.title = '快速记录 (N)';
-  fab.style.cssText = 'position:fixed;bottom:76px;right:16px;z-index:9997;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);font-size:18px;transition:transform 0.2s,bottom 0.3s;border:none;';
-  fab.innerHTML = '<i class="fas fa-plus"></i>';
+  fab.title = '记录灵感 (N)';
+  fab.style.cssText = 'position:fixed;bottom:76px;right:16px;z-index:9997;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 15px rgba(245,158,11,0.4);font-size:18px;transition:transform 0.2s,bottom 0.3s;border:none;';
+  fab.innerHTML = '<i class="fas fa-lightbulb"></i>';
   fab.onmouseenter = function() { this.style.transform = 'scale(1.1)'; };
   fab.onmouseleave = function() { this.style.transform = 'scale(1)'; };
   fab.onclick = function() { window._quickAdd(); };

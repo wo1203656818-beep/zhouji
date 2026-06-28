@@ -300,7 +300,7 @@ var R = {
     if (!wsDate) return '<p class="text-red-500">日期解析错误</p>';
 
     var today = U.fmt(new Date());
-    var h = '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-2">';
+    var h = '<div class="flex md:grid md:grid-cols-7 gap-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0" style="-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;">';
 
     for (var i = 0; i < 7; i++) {
       // 列 i=0→周日, i=1→周一 ... i=6→周六
@@ -318,7 +318,7 @@ var R = {
 
   // 单日列
   dayCol: function(dayIdx, ds, plans, isToday) {
-    var h = '<div class="bg-white dark:bg-gray-800 rounded-xl border ' + (isToday ? 'border-indigo-300 dark:border-indigo-500 ring-2 ring-indigo-100 dark:ring-indigo-900' : 'border-gray-100 dark:border-gray-700') + ' p-2.5 transition-all" ';
+    var h = '<div class="bg-white dark:bg-gray-800 rounded-xl border ' + (isToday ? 'border-indigo-300 dark:border-indigo-500 ring-2 ring-indigo-100 dark:ring-indigo-900' : 'border-gray-100 dark:border-gray-700') + ' p-2.5 transition-all md:min-w-0 min-w-[220px] flex-shrink-0" style="scroll-snap-align:start;" ';
     h += 'ondragover="event.preventDefault();this.classList.add(\'ring-2\',\'ring-amber-300\')" ';
     h += 'ondragleave="this.classList.remove(\'ring-2\',\'ring-amber-300\')" ';
     h += 'ondrop="H.handleDrop(event,' + dayIdx + ')" ';
@@ -451,8 +451,8 @@ var R = {
   addModal: function(defaults) {
     var defs = defaults || {};
     var modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fk-weekly-modal';
+    modal.onclick = function(e) { if (e.target === modal) { H.closeModal(); } };
     modal.innerHTML =
       '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-xl">' +
       '<h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4"><i class="fas fa-plus-circle text-indigo-500 mr-2"></i>新建计划</h3>' +
@@ -495,8 +495,8 @@ var R = {
   // 编辑计划弹窗
   editModal: function(p) {
     var modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fk-weekly-modal';
+    modal.onclick = function(e) { if (e.target === modal) { H.closeModal(); } };
     modal.innerHTML =
       '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-xl">' +
       '<h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4"><i class="fas fa-edit text-indigo-500 mr-2"></i>编辑</h3>' +
@@ -564,8 +564,8 @@ var R = {
   // 更多操作菜单
   menu: function() {
     var modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fk-weekly-modal';
+    modal.onclick = function(e) { if (e.target === modal) { H.closeModal(); } };
     modal.innerHTML =
       '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-5 shadow-xl">' +
       '<h3 class="font-bold text-gray-800 dark:text-white mb-4"><i class="fas fa-tools text-indigo-500 mr-2"></i>操作</h3>' +
@@ -597,11 +597,14 @@ var H = {
 
   // ═══ 核心：刷新整个页面 ═══
   refresh: async function() {
+    if (S._refreshing) return;  // 防止并发刷新
+    S._refreshing = true;
     try {
       await window.renderWeekly();
     } catch(e) {
       console.error('[refresh]', e);
     }
+    S._refreshing = false;
   },
 
   // ═══ 渲染主入口 ═══
@@ -702,6 +705,7 @@ var H = {
 
   // ═══ 新建计划 ═══
   showAdd: function(day) {
+    if (document.querySelector('.fk-weekly-modal')) return;  // 已有弹窗不重复打开
     var defs = {};
     if (typeof day === 'number') defs.day = day;
     var modal = R.addModal(defs);
@@ -709,6 +713,8 @@ var H = {
   },
 
   submitAdd: async function() {
+    if (S._submitting) return;  // 防止重复提交
+    S._submitting = true;
     var title = U.val('wa-title', '').trim();
     if (!title) { showToast('请输入标题', 'error'); return; }
 
@@ -733,10 +739,12 @@ var H = {
     } else {
       showToast('创建失败: ' + resp.err, 'error');
     }
+    S._submitting = false;
   },
 
   // ═══ 编辑计划 ═══
   showEdit: function(id) {
+    if (document.querySelector('.fk-weekly-modal')) return;  // 已有弹窗不重复打开
     var p = S.plans.find(function(x) { return x.id === id; });
     if (!p) { showToast('计划不存在', 'error'); return; }
     var modal = R.editModal(p);
@@ -744,6 +752,8 @@ var H = {
   },
 
   submitEdit: async function(id) {
+    if (S._submitting) return;
+    S._submitting = true;
     var title = U.val('we-title', '').trim();
     if (!title) { showToast('请输入标题', 'error'); return; }
 
@@ -775,6 +785,7 @@ var H = {
     } else {
       showToast('保存失败: ' + resp.err, 'error');
     }
+    S._submitting = false;
   },
 
   // ═══ 删除计划 ═══
@@ -815,7 +826,10 @@ var H = {
     var resp = await A.update(id, { status: newStatus });
     if (resp.ok) {
       showToast(newStatus === 'completed' ? '已完成' : '已撤销', 'success');
-      if (wasSynced) await A.sync([id], S.weekStart);
+      if (wasSynced) {
+        var syncResp = await A.sync([id], S.weekStart);
+        if (!syncResp.ok) showToast('状态已更新，但同步到任务池失败: ' + (syncResp.err || '未知错误'), 'warning');
+      }
       H.refresh();
     } else {
       showToast('操作失败: ' + resp.err, 'error');
@@ -930,8 +944,8 @@ var H = {
     }
     var ok = await showConfirmModal('同步本周 ' + unsynced.length + ' 项未同步计划到任务池？', '同步');
     if (!ok) return;
-    // 传入未同步计划的 ID 列表，后端会通过 week_start 来查询本周全部计划
-    var resp = await A.sync([], S.weekStart);
+    // 传入未同步计划的 ID 列表
+    var resp = await A.sync(unsynced.map(function(p) { return p.id; }), S.weekStart);
     if (resp.ok) {
       // 显示详细同步结果
       var msg = resp.data && resp.data.message ? resp.data.message : '已同步';
@@ -963,8 +977,8 @@ var H = {
   },
 
   closeModal: function() {
-    // 仅关闭周视图弹窗：fixed + inset-0 + z-50 组合唯一标识模态背景层
-    var modals = document.querySelectorAll('div.fixed.inset-0.z-50');
+    // 仅关闭周视图弹窗
+    var modals = document.querySelectorAll('div.fixed.inset-0.z-50.fk-weekly-modal');
     for (var i = 0; i < modals.length; i++) {
       if (modals[i].parentNode) modals[i].remove();
     }
@@ -976,8 +990,8 @@ var H = {
     var templates = (resp.ok && resp.data && resp.data.templates) ? resp.data.templates : [];
 
     var modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fk-weekly-modal';
+    modal.onclick = function(e) { if (e.target === modal) { H.closeModal(); } };
 
     var html = '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-5 shadow-xl" onclick="event.stopPropagation()">';
     html += '<div class="flex items-center justify-between mb-4"><h3 class="font-bold text-gray-800 dark:text-white"><i class="fas fa-pen text-purple-500 mr-2"></i>编辑模板</h3><button onclick="this.closest(\'.fixed\').remove()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button></div>';
@@ -1046,8 +1060,8 @@ var H = {
     daySel += '</select>';
 
     var modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fk-weekly-modal';
+    modal.onclick = function(e) { if (e.target === modal) { H.closeModal(); } };
     modal.innerHTML = '<div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-5 shadow-xl" onclick="event.stopPropagation()">' +
       '<h3 class="font-bold text-gray-800 dark:text-white mb-4">' + (editId ? '编辑' : '新建') + '模板</h3>' +
       '<div class="space-y-3">' +

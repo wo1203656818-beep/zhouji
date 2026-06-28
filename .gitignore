@@ -15,6 +15,12 @@ e2e-*.mjs
 e2e-*.js
 e2e.spec.cjs
 backend/seed_e2e_data.sql
+frontend/utils.test.js
+frontend/vitest.config.js
+frontend/debug-weekly.mjs
+
+# Test artifacts
+frontend/test-results/
 
 # Reports
 frontend/E2E_REPORT.md
@@ -25,9 +31,11 @@ frontend/WEEKLY_FIX_REPORT.md
 frontend/screenshots*/
 frontend/screenshots-weekly*/
 frontend/screenshots-e2e*/
+frontend/screenshots-weekly-full/
 
 # Backups
 frontend/*.bak
+frontend-backup-v3.0/
 
 # Audio assets
 frontend/audio/

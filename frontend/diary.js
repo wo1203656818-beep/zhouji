@@ -48,6 +48,12 @@ async function renderDiary() {
       </div>
       <div class="flex gap-2">
         <div class="relative">
+          <input type="date" id="diary-date-jump" 
+                 class="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all text-sm"
+                 onchange="jumpToDiaryDate(this.value)">
+          <i class="fas fa-calendar absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+        </div>
+        <div class="relative">
           <input type="text" id="diary-search" placeholder="搜索日记..." 
                  class="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-primary outline-none transition-all text-sm"
                  oninput="loadDiaryEntries()">
@@ -141,12 +147,12 @@ async function viewDiaryEntry(id) {
     const data = await api.get('/api/diary/' + id);
     currentDiaryEntry = data.entry;
     
-    const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop');
+    const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop diary-modal');
     modal.innerHTML = `
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-content">
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-xl font-bold text-gray-800 dark:text-white">${currentDiaryEntry.title}</h3>
-          <button onclick="this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button onclick="if(window._diaryAutoSaveTimer)clearTimeout(window._diaryAutoSaveTimer);this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <i class="fas fa-times text-xl"></i>
           </button>
         </div>
@@ -297,17 +303,22 @@ function showDiaryModal(entryId = null) {
     diaryMediaFiles = [];
   }
   
-  const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop');
+  const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop diary-modal');
   modal.innerHTML = `
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-content">
       <div class="flex items-center justify-between mb-6">
-        <h3 class="text-xl font-bold text-gray-800 dark:text-white">${isEdit ? '编辑日记' : '写日记'}</h3>
-        <button onclick="this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+        <h3 class="text-xl font-bold text-gray-800 dark:text-white">${isEdit ? '编辑日记' : '写日记'} <span id="diary-auto-save-status" class="text-xs font-normal text-gray-400 ml-2"></span></h3>
+        <button onclick="if(window._diaryAutoSaveTimer)clearTimeout(window._diaryAutoSaveTimer);this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <i class="fas fa-times text-xl"></i>
         </button>
       </div>
       
       <div class="space-y-4">
+        <!-- 今日回顾：今日完成任务快速引用 -->
+        <div id="diary-today-tasks" class="text-xs">
+          <p class="text-gray-400 mb-1"><i class="fas fa-check-circle text-secondary mr-1"></i>加载今日完成...</p>
+        </div>
+        
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">模板类型</label>
           <div class="flex gap-2">
@@ -455,7 +466,7 @@ function showDiaryModal(entryId = null) {
       </div>
       
       <div class="flex gap-2 justify-end mt-6">
-        <button onclick="this.closest('.modal-backdrop').remove()" 
+        <button onclick="if(window._diaryAutoSaveTimer)clearTimeout(window._diaryAutoSaveTimer);this.closest('.modal-backdrop').remove()" 
                 class="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all touch-btn">
           取消
         </button>
@@ -471,6 +482,9 @@ function showDiaryModal(entryId = null) {
   
   // 异步加载自定义模板选项
   loadCustomTemplates();
+  
+  // 异步加载今日完成任务，供快速引用
+  loadTodayTasksForDiary();
   
   // 如果有编辑时的模板类型，触发字段显示
   if (entry?.template_type && entry.template_type !== 'free') {
@@ -504,6 +518,51 @@ function showDiaryModal(entryId = null) {
   
   // 初始化富文本编辑器
   setTimeout(() => initDiaryEditor(), 100);
+
+  // 恢复自动保存草稿（仅新建模式）
+  if (!isEdit) {
+    var savedDraft = safeStorage.get('diary_draft');
+    if (savedDraft) {
+      try {
+        var draft = JSON.parse(savedDraft);
+        var titleInput = document.getElementById('diary-title');
+        var editor = document.getElementById('diary-content-editor');
+        var moodSelect = document.getElementById('diary-mood');
+        if (draft.title && titleInput && !titleInput.value) titleInput.value = draft.title;
+        if (draft.content && editor && !editor.innerHTML) {
+          editor.innerHTML = draft.content;
+          var textarea = document.getElementById('diary-content');
+          if (textarea) textarea.value = draft.content;
+        }
+        if (draft.mood && moodSelect) moodSelect.value = draft.mood;
+      } catch(e) {}
+    }
+  }
+
+  // 自动保存草稿：内容输入后2秒自动存
+  if (!isEdit) {
+    if (window._diaryAutoSaveTimer) clearTimeout(window._diaryAutoSaveTimer);
+    function onDiaryInput() {
+      if (window._diaryAutoSaveTimer) clearTimeout(window._diaryAutoSaveTimer);
+      var statusEl = document.getElementById('diary-auto-save-status');
+      if (statusEl) { statusEl.textContent = '未保存'; statusEl.className = 'text-xs font-normal text-amber-500 ml-2'; }
+      window._diaryAutoSaveTimer = setTimeout(function() {
+        var t = document.getElementById('diary-title')?.value || '';
+        var ed = document.getElementById('diary-content-editor');
+        var c = ed ? ed.innerHTML : '';
+        var m = document.getElementById('diary-mood')?.value || 'neutral';
+        safeStorage.set('diary_draft', JSON.stringify({ title: t, content: c, mood: m, saved_at: Date.now() }));
+        if (statusEl) { statusEl.textContent = '已自动保存'; statusEl.className = 'text-xs font-normal text-emerald-500 ml-2'; }
+      }, 2000);
+    }
+
+    var diaryTitleEl = document.getElementById('diary-title');
+    var diaryEditorEl = document.getElementById('diary-content-editor');
+    var diaryMoodEl = document.getElementById('diary-mood');
+    if (diaryTitleEl) diaryTitleEl.addEventListener('input', onDiaryInput);
+    if (diaryEditorEl) diaryEditorEl.addEventListener('input', onDiaryInput);
+    if (diaryMoodEl) diaryMoodEl.addEventListener('change', onDiaryInput);
+  }
 }
 async function handleDiaryMediaUpload(input, mediaType) {
   const files = input.files;
@@ -911,12 +970,12 @@ async function showTemplateManager() {
     cbtTemplates = [];
   }
 
-  const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop');
+  const modal = el('div', 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-backdrop diary-modal');
   modal.innerHTML = `
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto modal-content">
       <div class="flex items-center justify-between mb-6">
         <h3 class="text-xl font-bold text-gray-800 dark:text-white"><i class="fas fa-puzzle-piece text-primary mr-2"></i>模板管理</h3>
-        <button onclick="this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+        <button onclick="if(window._diaryAutoSaveTimer)clearTimeout(window._diaryAutoSaveTimer);this.closest('.modal-backdrop').remove()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <i class="fas fa-times text-xl"></i>
         </button>
       </div>
@@ -1015,7 +1074,7 @@ function useTemplate(templateKey) {
   try {
     console.log('[useTemplate] 使用模板:', templateKey);
     // 关闭模板管理器
-    document.querySelector('.modal-backdrop')?.remove();
+    document.querySelector('.diary-modal')?.remove();
     
     // 设置选择器并触发切换
     const select = document.getElementById('diary-template');
@@ -1111,7 +1170,7 @@ async function saveNewTemplate() {
     await loadCustomTemplates();
     
     // 关闭模板管理器并重新打开
-    document.querySelector('.modal-backdrop')?.remove();
+    document.querySelector('.diary-modal')?.remove();
     showTemplateManager();
   } catch (err) {
     showToast(err.message || '创建失败', 'error');
@@ -1131,7 +1190,7 @@ async function deleteCustomTemplate(id) {
     await loadCustomTemplates();
     
     // 刷新模板管理器
-    document.querySelector('.modal-backdrop')?.remove();
+    document.querySelector('.diary-modal')?.remove();
     showTemplateManager();
   } catch (err) {
     showToast(err.message || '删除失败', 'error');
@@ -1174,22 +1233,26 @@ async function saveDiaryEntry(entryId = null) {
       // <- 向后兼容注释删除
     }
     
-    if (entryId && entryId !== 'null') {
+    // 判断编辑/新建：entryId 可能是数字、null 或字符串 'null'
+    var isEdit = entryId && entryId !== 'null';
+    if (isEdit) {
       await api.put('/api/diary/' + entryId, data);
       showToast('日记已更新');
     } else {
       await api.post('/api/diary', data);
       showToast('日记已发布');
     }
+    // 清除自动保存草稿
+    safeStorage.remove('diary_draft');
     
     // 自动检查成就
     if (typeof autoCheckAchievements === 'function') {
       autoCheckAchievements();
     }
     
-    diaryMediaFiles = [];
-    document.querySelector('.modal-backdrop')?.remove();
+    document.querySelector('.diary-modal')?.remove();
     await loadDiaryEntries();
+    diaryMediaFiles = [];  // 刷新成功后清空
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1197,7 +1260,7 @@ async function saveDiaryEntry(entryId = null) {
 
 // ========== 编辑日记 ==========
 async function editDiaryEntry(id) {
-  document.querySelector('.modal-backdrop')?.remove();
+  document.querySelector('.diary-modal')?.remove();
   showDiaryModal(id);
 }
 
@@ -1209,7 +1272,7 @@ async function deleteDiaryEntry(id) {
   try {
     await api.del('/api/diary/' + id);
     showToast('日记已删除');
-    document.querySelector('.modal-backdrop')?.remove();
+    document.querySelector('.diary-modal')?.remove();
     await loadDiaryEntries();
   } catch (err) {
     showToast(err.message, 'error');
@@ -1363,3 +1426,64 @@ window.previewFile = previewFile;
 
 window.formatText = formatText;
 window.insertLink = insertLink;
+
+// ========== 日记今日任务回顾 ==========
+async function loadTodayTasksForDiary() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const data = await api.get('/api/tasks?limit=50', { cache: false });
+    const tasks = (data.tasks || []).filter(function(t) {
+      return t.status === 'completed' && t.due_date === today;
+    });
+    var container = document.getElementById('diary-today-tasks');
+    if (!container) return;
+    if (tasks.length === 0) {
+      container.innerHTML = '<p class="text-xs text-gray-400 mb-3"><i class="fas fa-check-circle text-secondary mr-1"></i>暂无今日完成任务</p>';
+      return;
+    }
+    var html = '<div class="mb-3">';
+    html += '<p class="text-xs text-gray-500 dark:text-gray-400 mb-1.5"><i class="fas fa-check-circle text-secondary mr-1"></i>今日完成（点击引用到日记）</p>';
+    html += '<div class="flex flex-wrap gap-1.5">';
+    tasks.slice(0, 10).forEach(function(t) {
+      html += '<span onclick="insertTaskRef(\'' + escapeHtml(t.title) + '\')" class="px-2 py-1 rounded-lg bg-secondary/10 text-secondary text-xs cursor-pointer hover:bg-secondary/20 transition-all touch-btn">' + escapeHtml(t.title) + '</span>';
+    });
+    if (tasks.length > 10) {
+      html += '<span class="px-2 py-1 text-xs text-gray-400">+ ' + (tasks.length - 10) + ' 项</span>';
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+  } catch(e) {
+    console.error('[diary] 加载今日任务失败:', e);
+  }
+}
+
+function insertTaskRef(title) {
+  var editor = document.getElementById('diary-content-editor');
+  if (!editor) return;
+  // 在编辑器末尾插入引用
+  var refHtml = '<br><span class="bg-secondary/10 text-secondary px-2 py-0.5 rounded text-sm">✅ ' + escapeHtml(title) + '</span>&nbsp;';
+  // 使用 execCommand 在光标位置插入
+  editor.focus();
+  document.execCommand('insertHTML', false, refHtml);
+  // 同步到隐藏的 textarea
+  var textarea = document.getElementById('diary-content');
+  if (textarea) textarea.value = editor.innerHTML;
+}
+
+window.loadTodayTasksForDiary = loadTodayTasksForDiary;
+window.insertTaskRef = insertTaskRef;
+
+// ========== 日记日期跳转 ==========
+function jumpToDiaryDate(dateStr) {
+  if (!dateStr) return;
+  // 设置日期输入框的值
+  var input = document.getElementById('diary-date-jump');
+  if (input) input.value = dateStr;
+  // 搜索指定日期的日记
+  var searchInput = document.getElementById('diary-search');
+  if (searchInput) {
+    searchInput.value = dateStr;
+    loadDiaryEntries();
+  }
+}
+window.jumpToDiaryDate = jumpToDiaryDate;

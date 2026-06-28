@@ -118,11 +118,11 @@ var selectedInspSource = null;
 function selectInspSource(key, btn) {
   selectedInspSource = key;
   document.querySelectorAll('.insp-source-btn').forEach(function(b) {
-    b.className = b.className.replace(' border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30', '');
-    b.className = b.className.replace('border-transparent', '') + ' border-transparent';
+    b.classList.remove('border-yellow-400', 'bg-yellow-50', 'dark:bg-yellow-900/30');
+    b.classList.add('border-transparent');
   });
-  btn.className = btn.className.replace(' border-transparent', '');
-  btn.className += ' border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30';
+  btn.classList.remove('border-transparent');
+  btn.classList.add('border-yellow-400', 'bg-yellow-50', 'dark:bg-yellow-900/30');
 }
 window.selectInspSource = selectInspSource;
 
@@ -157,12 +157,12 @@ function toggleInspTag(tag, btn) {
   var idx = selectedInspTags.indexOf(tag);
   if (idx > -1) {
     selectedInspTags.splice(idx, 1);
-    btn.className = btn.className.replace(' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', '');
-    btn.className += ' border-transparent text-gray-600 dark:text-gray-400';
+    btn.classList.remove('border-indigo-400', 'bg-indigo-50', 'dark:bg-indigo-900/30', 'text-indigo-600', 'dark:text-indigo-400');
+    btn.classList.add('border-transparent', 'text-gray-600', 'dark:text-gray-400');
   } else {
     selectedInspTags.push(tag);
-    btn.className = btn.className.replace(' border-transparent', '');
-    btn.className += ' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400';
+    btn.classList.remove('border-transparent');
+    btn.classList.add('border-indigo-400', 'bg-indigo-50', 'dark:bg-indigo-900/30', 'text-indigo-600', 'dark:text-indigo-400');
   }
 }
 window.toggleInspTag = toggleInspTag;
@@ -188,7 +188,6 @@ async function saveInspiration() {
         cbt_thought: extra
       });
       showToast('灵感已更新 ✏️', 'success');
-      _editingId = null;
     } else {
       await api.post('/api/diary', {
         title: finalTitle.substring(0, 100),
@@ -205,12 +204,13 @@ async function saveInspiration() {
     document.getElementById('insp-content').value = '';
     selectedInspSource = null;
     document.querySelectorAll('.insp-source-btn').forEach(function(b) {
-      b.className = b.className.replace(' border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30', '') + ' border-transparent';
+      b.classList.remove('border-yellow-400', 'bg-yellow-50', 'dark:bg-yellow-900/30');
+      b.classList.add('border-transparent');
     });
     selectedInspTags = [];
     document.querySelectorAll('.insp-tag-btn').forEach(function(b) {
-      b.className = b.className.replace(' border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', '');
-      b.className += ' border-transparent text-gray-600 dark:text-gray-400';
+      b.classList.remove('border-indigo-400', 'bg-indigo-50', 'dark:bg-indigo-900/30', 'text-indigo-600', 'dark:text-indigo-400');
+      b.classList.add('border-transparent', 'text-gray-600', 'dark:text-gray-400');
     });
     // 刷新列表
     var listHtml = await loadInspirations();
@@ -299,6 +299,7 @@ function renderInspList(entries) {
       '<p class="text-[10px] text-gray-400 mt-0.5">' + time + '</p>' +
       '</div>' +
       '<div style="display:flex;gap:2px;flex-shrink:0;">' +
+      '<button onclick="inspirationToScript(' + e.id + ')" class="text-gray-300 dark:text-gray-600 hover:text-emerald-500 p-1" title="转为脚本"><i class="fas fa-file-pen" style="font-size:10px"></i></button>' +
       '<button onclick="editInspiration(' + e.id + ',\'' + b64Title + '\',\'' + b64Content + '\')" class="text-gray-300 dark:text-gray-600 hover:text-yellow-500 p-1" title="编辑"><i class="fas fa-pen" style="font-size:10px"></i></button>' +
       '<button onclick="deleteInspiration(' + e.id + ',this)" class="text-gray-300 dark:text-gray-600 hover:text-red-500 p-1" title="删除"><i class="fas fa-trash-alt" style="font-size:10px"></i></button>' +
       '</div>' +
@@ -377,3 +378,26 @@ window.closeMusicPlayer = function() {
   document.getElementById('music-player-container').style.display = 'none';
   document.getElementById('music-player').style.display = 'none';
 };
+
+// ========== 灵感→创作者 流转 ==========
+function inspirationToScript(id) {
+  var insp = _allInspirations.find(function(e) { return e.id === id; });
+  if (!insp) { showToast('灵感数据获取失败', 'error'); return; }
+  var scripts = [];
+  try { scripts = JSON.parse(localStorage.getItem('creator_scripts') || '[]'); } catch(e) { scripts = []; }
+  var now = new Date().toISOString();
+  scripts.unshift({
+    id: 'scr_' + Date.now(),
+    title: insp.title || '灵感脚本',
+    content: insp.content || '',
+    word_count: (insp.content || '').replace(/\s/g, '').length,
+    status: 'draft',
+    created_at: now,
+    updated_at: now,
+    source: 'inspiration'
+  });
+  localStorage.setItem('creator_scripts', JSON.stringify(scripts));
+  showToast('灵感已转为脚本，可在创作者中编辑 ✨', 'success');
+  navigate('creator-studio');
+}
+window.inspirationToScript = inspirationToScript;

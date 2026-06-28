@@ -768,6 +768,8 @@ router.get('/api/tasks', async (req, env) => {
     const status = url.searchParams.get('status');
     const category = url.searchParams.get('category');
     const search = url.searchParams.get('search');
+    // 限制搜索长度防止D1查询失败
+    const safeSearch = search ? search.slice(0, 100) : search;
 
     const db = env.DB;
     let sql = 'SELECT * FROM tasks WHERE user_id = ?';
@@ -775,7 +777,7 @@ router.get('/api/tasks', async (req, env) => {
 
     if (status) { sql += ' AND status = ?'; bindings.push(status); }
     if (category) { sql += ' AND category = ?'; bindings.push(category); }
-    if (search) { sql += ' AND (title LIKE ? OR description LIKE ?)'; bindings.push(`%${search}%`, `%${search}%`); }
+    if (safeSearch) { sql += ' AND (title LIKE ? OR description LIKE ?)'; bindings.push(`%${safeSearch}%`, `%${safeSearch}%`); }
     sql += ' ORDER BY CASE status WHEN "in_progress" THEN 1 WHEN "pending" THEN 2 ELSE 3 END, difficulty ASC, created_at DESC';
 
     const { results } = await db.prepare(sql).bind(...bindings).all();
@@ -798,7 +800,7 @@ router.put('/api/tasks/:id', async (req, env) => {
 
   try {
     const taskId = req.params.id;
-    const { title, description, status, difficulty, priority, due_date } = await req.json();
+    const { title, description, status, difficulty, priority, due_date, is_pinned, sort_order } = await req.json();
 
     const db = env.DB;
     const existing = await db.prepare('SELECT status FROM tasks WHERE id = ? AND user_id = ?')
@@ -2794,6 +2796,23 @@ router.post('/api/weekly-plans/delete', async (req, env) => {
     await db.prepare(`DELETE FROM weekly_plans WHERE user_id = ? AND id IN (${placeholders})`).bind(userId, ...ids).run();
     
     return jsonResponse({ success: true, deleted: ids.length });
+  } catch (e) {
+    return jsonResponse({ error: '删除周计划失败: ' + e.message }, 500);
+  }
+});
+
+// 删除单个周计划（RESTful风格）
+router.delete('/api/weekly-plans/:id', async (req, env) => {
+  const auth = await authMiddleware(req, env);
+  if (auth.error) return jsonResponse({ error: auth.error }, auth.status);
+  try {
+    const db = env.DB;
+    const userId = auth.userId;
+    const planId = req.params.id;
+    const existing = await db.prepare('SELECT id FROM weekly_plans WHERE id = ? AND user_id = ?').bind(planId, userId).first();
+    if (!existing) return jsonResponse({ error: '周计划不存在' }, 404);
+    await db.prepare('DELETE FROM weekly_plans WHERE id = ? AND user_id = ?').bind(planId, userId).run();
+    return jsonResponse({ success: true });
   } catch (e) {
     return jsonResponse({ error: '删除周计划失败: ' + e.message }, 500);
   }

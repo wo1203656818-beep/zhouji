@@ -113,6 +113,7 @@ async function renderDeliveryGap() {
 
 // 开始间隙计时
 window.startGapTimer = function() {
+  if (gapActive) { showToast('已有计时器在进行中', 'info'); return; }
   gapActive = true;
   gapStartTime = Date.now();
   gapSeconds = 0;
@@ -219,26 +220,24 @@ window.closeGapTask = function() {
 };
 
 // 保存灵感
-window.saveGapIdea = function() {
+window.saveGapIdea = async function() {
   const text = (document.getElementById('gap-idea-input')?.value || '').trim();
   if (!text) { showToast('请输入灵感内容', 'error'); return; }
 
-  // 存到灵感 localStorage
-  let inspirations = [];
-  try { inspirations = JSON.parse(localStorage.getItem('inspirations') || '[]'); } catch(e) {}
-  inspirations.unshift({
-    id: Date.now(),
-    text: text,
-    tags: ['间隙记录'],
-    createdAt: new Date().toISOString()
-  });
-  localStorage.setItem('inspirations', JSON.stringify(inspirations));
-
-  showToast('灵感已保存！', 'success');
-  document.getElementById('gap-idea-input').value = '';
-
-  // 标记这个间隙完成了任务
-  markGapTaskDone('idea');
+  try {
+    await api.post('/api/diary', {
+      title: '间隙灵感 ' + new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
+      content: text,
+      template_type: 'inspiration',
+      is_private: true
+    });
+    showToast('灵感已保存！可在灵感记录中查看 ✨', 'success');
+    document.getElementById('gap-idea-input').value = '';
+    // 标记这个间隙完成了任务
+    markGapTaskDone('idea');
+  } catch(e) {
+    showToast('保存失败: ' + (e.message || '网络错误'), 'error');
+  }
 };
 
 // 标记任务完成

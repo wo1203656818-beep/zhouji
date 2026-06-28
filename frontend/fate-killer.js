@@ -40,9 +40,14 @@
           if (d && d.success && d.data) return JSON.parse(d.data);
           throw new Error('no data');
         });
+        var syncEl = document.getElementById('fk-sync-status');
+        if (syncEl) { syncEl.innerHTML = '<span style="color:#16a34a">☁️ 已同步</span>'; }
         return result.data;
       }
-    } catch(e) {}
+    } catch(e) {
+      var syncEl = document.getElementById('fk-sync-status');
+      if (syncEl) { syncEl.innerHTML = '<span style="color:#d97706">📱 离线模式</span>'; }
+    }
     // 传统回退
     var token = localStorage.getItem('token');
     if (!token) return null;
@@ -395,7 +400,8 @@
     // ====== 顶部 ======
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">';
     h += '<div><h1 style="font-size:24px;font-weight:700;color:' + c.text + ';margin:0;letter-spacing:-0.3px;">' + icon('bolt') + ' 反宿命论计划</h1>';
-    h += '<p style="font-size:13px;color:' + c.muted + ';margin:2px 0 0;">从0开始 · 8月底目标月入1万 · 用行动打破2028预言</p></div>';
+    h += '<p style="font-size:13px;color:' + c.muted + ';margin:2px 0 0;">从0开始 · 8月底目标月入1万 · 用行动打破2028预言</p>';
+    h += '<span id="fk-sync-status" style="font-size:11px;color:' + c.muted + ';margin-top:2px;">⏳ 同步中...</span></div>';
     // 倒计时到第60天（8月27日）
     var end = new Date(2026, 7, 27);
     var now = new Date();

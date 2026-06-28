@@ -148,11 +148,15 @@ window.showScriptEditor = function(scriptId) {
 
   // 关闭按钮
   document.getElementById('cs-close-btn').onclick = function() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
     overlay.remove();
   };
   // 点击背景关闭
   overlay.onclick = function(e) {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) {
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      overlay.remove();
+    }
   };
 
   // 编辑模式填充数据
@@ -170,6 +174,55 @@ window.showScriptEditor = function(scriptId) {
       }
     } catch(e) {}
   }
+
+  // 自动保存：输入后2秒自动存草稿
+  var autoSaveTimer = null;
+  var statusEl = document.createElement('span');
+  statusEl.className = 'text-[10px] text-gray-400 ml-2';
+  statusEl.textContent = '';
+  var btnContainer = overlay.querySelector('.flex.gap-2');
+  if (btnContainer) btnContainer.appendChild(statusEl);
+
+  function onInputChange() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    statusEl.textContent = '未保存';
+    statusEl.className = 'text-[10px] text-amber-500 ml-2';
+    autoSaveTimer = setTimeout(function() {
+      var t = document.getElementById('script-title');
+      var c = document.getElementById('script-content');
+      if (!t || !c) return;
+      var title = t.value.trim();
+      if (!title) { statusEl.textContent = ''; return; }
+      var content = c.value;
+      var now = new Date().toISOString();
+      var allScripts = [];
+      try { allScripts = JSON.parse(localStorage.getItem('creator_scripts') || '[]'); } catch(e) {}
+      if (scriptId) {
+        var idx = allScripts.findIndex(function(s){return s.id===scriptId});
+        if (idx !== -1) {
+          allScripts[idx].title = title;
+          allScripts[idx].content = content;
+          allScripts[idx].word_count = content.replace(/\s/g, '').length;
+          allScripts[idx].updated_at = now;
+        }
+      } else {
+        scriptId = 'scr_auto_' + Date.now();
+        allScripts.unshift({
+          id: scriptId, title: title, content: content,
+          word_count: content.replace(/\s/g, '').length,
+          status: 'draft', created_at: now, updated_at: now
+        });
+      }
+      localStorage.setItem('creator_scripts', JSON.stringify(allScripts));
+      statusEl.textContent = '已自动保存';
+      statusEl.className = 'text-[10px] text-emerald-500 ml-2';
+    }, 2000);
+  }
+
+  var titleInput = document.getElementById('script-title');
+  var contentInput = document.getElementById('script-content');
+  if (titleInput) titleInput.addEventListener('input', onInputChange);
+  if (contentInput) contentInput.addEventListener('input', onInputChange);
 };
 
 // 应用分镜模板
@@ -252,8 +305,9 @@ window.editScript = function(id) {
 };
 
 // 删除脚本
-window.deleteScript = function(id) {
-  if (!confirm('确定删除这个脚本吗？')) return;
+window.deleteScript = async function(id) {
+  var ok = await showConfirmModal('确定删除这个脚本吗？', '删除');
+  if (!ok) return;
   let scripts = [];
   try { scripts = JSON.parse(localStorage.getItem('creator_scripts') || '[]'); } catch(e) { scripts = []; }
   scripts = scripts.filter(function(s){return s.id!==id});

@@ -51,34 +51,10 @@ async function renderStats() {
         <canvas id="taskTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
-      <!-- 情绪变化曲线 -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">😊 情绪变化曲线</h3>
-        <canvas id="emotionTrendChart" style="max-height: 300px;"></canvas>
-      </div>
-
-      <!-- 习惯养成热力图 -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🔥 习惯养成热力图</h3>
-        <div id="habitHeatmap" class="w-full"></div>
-      </div>
-
-      <!-- 拖延模式分析 -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🧠 拖延模式分析</h3>
-        <canvas id="procrastinationChart" style="max-height: 300px;"></canvas>
-      </div>
-
       <!-- 日记趋势 -->
       <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">📝 日记趋势</h3>
         <canvas id="diaryTrendChart" style="max-height: 300px;"></canvas>
-      </div>
-
-      <!-- 启动记录 -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🚀 微启动记录</h3>
-        <canvas id="microStartChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 灵感趋势 -->
@@ -86,11 +62,43 @@ async function renderStats() {
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">💡 灵感趋势</h3>
         <canvas id="inspirationTrendChart" style="max-height: 300px;"></canvas>
       </div>
+    </div>
 
-      <!-- 番茄钟统计 -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
-        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🍅 番茄钟统计</h3>
-        <canvas id="pomodoroChart" style="max-height: 300px;"></canvas>
+    <!-- 更多分析（折叠） -->
+    <div class="mb-8">
+      <button onclick="toggleMoreStats()" class="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all">
+        <i class="fas fa-chart-simple"></i> 更多分析 <i class="fas fa-chevron-down text-xs" id="more-stats-arrow"></i>
+      </button>
+      <div id="more-stats-panel" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6" style="display:none">
+        <!-- 情绪变化曲线 -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
+          <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">😊 情绪变化曲线</h3>
+          <canvas id="emotionTrendChart" style="max-height: 300px;"></canvas>
+        </div>
+
+        <!-- 习惯养成热力图 -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
+          <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🔥 习惯养成热力图</h3>
+          <div id="habitHeatmap" class="w-full"></div>
+        </div>
+
+        <!-- 拖延模式分析 -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
+          <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🧠 拖延模式分析</h3>
+          <canvas id="procrastinationChart" style="max-height: 300px;"></canvas>
+        </div>
+
+        <!-- 启动记录 -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
+          <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🚀 微启动记录</h3>
+          <canvas id="microStartChart" style="max-height: 300px;"></canvas>
+        </div>
+
+        <!-- 番茄钟统计 -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
+          <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🍅 番茄钟统计</h3>
+          <canvas id="pomodoroChart" style="max-height: 300px;"></canvas>
+        </div>
       </div>
     </div>
 
@@ -159,6 +167,7 @@ async function renderStats() {
 
 // ========== 加载统计数据 ==========
 async function loadStats(days = '30') {
+  window._statsDays = days;  // 保存当前天数，供 toggleMoreStats 使用
   console.log('[loadStats] 开始加载统计数据，days:', days);
   try {
     // 修复: 更新按钮样式 — 从 setTimeout 调用时无 event 对象
@@ -898,3 +907,16 @@ window.exportStats = exportStats;
 window.exportStatsToExcel = exportStatsToExcel;
 window.exportCSVData = exportCSVData;
 window.exportJSONBackup = exportJSONBackup;
+
+// 统计图表折叠切换
+function toggleMoreStats() {
+  var panel = document.getElementById('more-stats-panel');
+  var arrow = document.getElementById('more-stats-arrow');
+  if (!panel) return;
+  var isHidden = panel.style.display === 'none' || panel.style.display === '';
+  panel.style.display = isHidden ? 'grid' : 'none';
+  if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+  // 展开时渲染隐藏图表，保留当前选中的天数
+  if (isHidden) setTimeout(function() { loadStats(window._statsDays || '30'); }, 100);
+}
+window.toggleMoreStats = toggleMoreStats;

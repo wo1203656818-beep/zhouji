@@ -360,7 +360,6 @@ const api = {
   put: (e, b) => api.request('PUT', e, b),
   del: (e) => api.request('DELETE', e)
 };
-};
 
 
 

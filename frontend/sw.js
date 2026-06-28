@@ -97,8 +97,10 @@ self.addEventListener('fetch', (event) => {
         // 先返回缓存（如果有）
         var fetchPromise = fetch(event.request).then(function(response) {
           if (response.ok) {
+            // 先 clone 再存缓存，防止 response body 已被读取
+            var responseToCache = response.clone();
             caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(event.request, response.clone());
+              cache.put(event.request, responseToCache);
             });
           }
           return response;
@@ -116,8 +118,9 @@ self.addEventListener('fetch', (event) => {
         // 后台更新缓存
         fetch(event.request).then(function(response) {
           if (response.ok) {
+            var responseClone = response.clone(); // 先 clone 再存缓存
             caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(event.request, response);
+              cache.put(event.request, responseClone);
             });
           }
         }).catch(function() {});

@@ -74,7 +74,7 @@ async function renderCreatorStudio() {
   }
   html += '</div></div>';
 
-  return el('div', html);
+  return el('div', 'max-w-6xl mx-auto fade-in', html);
 }
 
 // 脚本编辑器弹窗（样式与全局一致）

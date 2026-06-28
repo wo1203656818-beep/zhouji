@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2305
+// 版本：2026-06-28-2315
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -201,85 +201,165 @@ function hideLoading() { loadingCounter = Math.max(0, loadingCounter - 1); if (l
 
 // API 封装（带 loading 和错误处理）
 const api = {
+  // 请求缓存（内存，5分钟过期）
+  _cache: new Map(),
+  _cacheExpiry: 5 * 60 * 1000,
+  // 进行中的请求（去重用）
+  _pending: new Map(),
+
+  // 清除缓存（可选：传入 endpoint 前缀清除部分缓存）
+  clearCache(prefix) {
+    if (!prefix) {
+      this._cache.clear();
+      console.log('[api] 缓存已清空');
+    } else {
+      for (var key of this._cache.keys()) {
+        if (key.startsWith(prefix)) this._cache.delete(key);
+      }
+      console.log('[api] 已清除缓存:', prefix);
+    }
+  },
+
+  // 生成缓存 key
+  _cacheKey(method, endpoint) {
+    return method + ':' + endpoint;
+  },
+
+  // 读取缓存
+  _getCache(method, endpoint) {
+    if (method !== 'GET') return null;
+    var key = this._cacheKey(method, endpoint);
+    var cached = this._cache.get(key);
+    if (cached && Date.now() - cached.ts < this._cacheExpiry) {
+      console.log('[api] 命中缓存:', endpoint);
+      return cached.data;
+    }
+    return null;
+  },
+
+  // 写入缓存
+  _setCache(method, endpoint, data) {
+    if (method !== 'GET') return;
+    var key = this._cacheKey(method, endpoint);
+    this._cache.set(key, { data: data, ts: Date.now() });
+  },
+
   async request(method, endpoint, body, options) {
     if (body === void 0) { body = null; }
     if (options === void 0) { options = {}; }
     var retries = options.retries || 2;
     var timeout = options.timeout || 30000;
-    showLoading();
+    var useCache = options.cache !== false; // 默认开启缓存
+
+    // GET 请求：检查内存缓存
+    if (method === 'GET' && useCache) {
+      var cached = this._getCache(method, endpoint);
+      if (cached) return JSON.parse(JSON.stringify(cached)); // 深拷贝，防止外部修改
+    }
+
+    // 请求去重：相同 URL 的并发请求只发一次
+    var dedupKey = this._cacheKey(method, endpoint);
+    if (method === 'GET' && this._pending.has(dedupKey)) {
+      console.log('[api] 去重请求:', endpoint);
+      return this._pending.get(dedupKey);
+    }
 
     var token = safeStorage.get('token');
     var headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
-    // 已移除离线模式功能
-
     var lastError;
-    for (var attempt = 0; attempt <= retries; attempt++) {
-      try {
-        var controller = new AbortController();
-        var timeoutId = setTimeout(function() { controller.abort(); }, timeout);
+    var self = this;
+    var doRequest = async function() {
+      for (var attempt = 0; attempt <= retries; attempt++) {
+        try {
+          var controller = new AbortController();
+          var timeoutId = setTimeout(function() { controller.abort(); }, timeout);
 
-        var res = await fetch(getApiBase() + endpoint, {
-          method: method, headers: headers,
-          body: body ? JSON.stringify(body) : null,
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+          var res = await fetch(getApiBase() + endpoint, {
+            method: method, headers: headers,
+            body: body ? JSON.stringify(body) : null,
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
 
-        if (res.status === 429) {
-          var retryAfter = parseInt(res.headers.get('X-RateLimit-Reset') || '5');
-          showToast('请求过于频繁，' + retryAfter + '秒后重试', 'warning');
-          await new Promise(function(r) { setTimeout(r, retryAfter * 1000); });
-          continue;
-        }
-
-        if (res.status === 401) {
-          var data = await res.json();
-          var isAuthEndpoint = endpoint.includes('/api/auth/');
-          if (isAuthEndpoint) {
-            // 登录/注册接口的401是用户名或密码错误，显示后端返回的实际错误
-            throw new Error(data.error || data.message || '用户名或密码错误');
+          if (res.status === 429) {
+            var retryAfter = parseInt(res.headers.get('X-RateLimit-Reset') || '5');
+            showToast('请求过于频繁，' + retryAfter + '秒后重试', 'warning');
+            await new Promise(function(r) { setTimeout(r, retryAfter * 1000); });
+            continue;
           }
-          // 其他接口的401才是token过期
-          safeStorage.remove('token');
-          safeStorage.remove('userId');
-          safeStorage.remove('username');
-          showToast('登录已过期，请重新登录', 'error');
-          setTimeout(function() { navigate('login'); }, 1500);
-          throw new Error('认证已过期');
+
+          if (res.status === 401) {
+            var data = await res.json();
+            var isAuthEndpoint = endpoint.includes('/api/auth/');
+            if (isAuthEndpoint) {
+              throw new Error(data.error || data.message || '用户名或密码错误');
+            }
+            safeStorage.remove('token');
+            safeStorage.remove('userId');
+            safeStorage.remove('username');
+            showToast('登录已过期，请重新登录', 'error');
+            setTimeout(function() { navigate('login'); }, 1500);
+            throw new Error('认证已过期');
+          }
+
+          var data = await res.json();
+          if (!res.ok) throw new Error(data.error || data.message || 'HTTP ' + res.status);
+
+          // 写入缓存（GET 请求）
+          if (method === 'GET' && useCache) {
+            self._setCache(method, endpoint, data);
+          }
+          // POST/PUT/DELETE 后清除相关缓存
+          if (method !== 'GET') {
+            self.clearCache(endpoint.split('?')[0]);
+          }
+
+          return data;
+        } catch (err) {
+          lastError = err;
+          if (err.name === 'AbortError') {
+            console.warn('请求超时，重试中...');
+          } else if (err.message && err.message.includes('Failed to fetch')) {
+            throw new Error('无法连接到服务器，请检查 API 地址或网络连接');
+          } else if (attempt < retries && !err.message.includes('认证')) {
+            await new Promise(function(r) { setTimeout(r, 1000 * (attempt + 1)); });
+            continue;
+          }
+          break;
         }
-
-        var data = await res.json();
-        if (!res.ok) throw new Error(data.error || data.message || 'HTTP ' + res.status);
-
-        // 请求成功
-
-        hideLoading();
-        return data;
-      } catch (err) {
-        lastError = err;
-        if (err.name === 'AbortError') {
-          console.warn('请求超时，重试中...');
-        } else if (err.message && err.message.includes('Failed to fetch')) {
-          hideLoading();
-          throw new Error('无法连接到服务器，请检查 API 地址或网络连接');
-        } else if (attempt < retries && !err.message.includes('认证')) {
-          await new Promise(function(r) { setTimeout(r, 1000 * (attempt + 1)); });
-          continue;
-        }
-        break;
       }
+      throw lastError;
+    };
+
+    // 去重：保存 promise
+    var promise;
+    if (method === 'GET') {
+      promise = doRequest().finally(function() {
+        self._pending.delete(dedupKey);
+      });
+      this._pending.set(dedupKey, promise);
+    } else {
+      promise = doRequest();
     }
-    hideLoading();
-    throw lastError;
+
+    showLoading();
+    try {
+      var result = await promise;
+      hideLoading();
+      return result;
+    } catch (err) {
+      hideLoading();
+      throw err;
+    }
   },
 
-
-  get: (e) => api.request('GET', e),
+  get: (e, opts) => api.request('GET', e, null, opts),
   post: (e, b) => api.request('POST', e, b),
   put: (e, b) => api.request('PUT', e, b),
   del: (e) => api.request('DELETE', e)
+};
 };
 
 
@@ -527,7 +607,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2305</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2315</span>
       </div>
     </div>
   </div>`;

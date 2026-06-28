@@ -841,6 +841,7 @@ var H = {
     var resp = await A.initTemplates();
     if (resp.ok) {
       showToast('已导入 ' + resp.data.count + ' 条模板到各日期列（周一~周五）', 'success');
+      api.clearCache('/api/weekly-plans');
       H.refresh();
     } else {
       showToast('失败: ' + resp.err, 'error');
@@ -964,6 +965,7 @@ var H = {
     var resp = await A.clear();
     if (resp.ok) {
       showToast('已清空', 'success');
+      api.clearCache('/api/weekly-plans');
       H.refresh();
     } else {
       showToast('清空失败: ' + resp.err, 'error');

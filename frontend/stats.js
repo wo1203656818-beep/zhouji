@@ -23,9 +23,17 @@ async function renderStats() {
   const div = el('div', 'p-4 md:p-8 max-w-7xl mx-auto fade-in');
   
   div.innerHTML = `
-    <div class="mb-8">
-      <h2 class="text-3xl font-bold text-gray-800 dark:text-white mb-2">📊 数据可视化</h2>
-      <p class="text-gray-500 dark:text-gray-400">洞察你的习惯养成和拖延模式</p>
+    <div class="mb-6">
+      <h2 class="text-xl md:text-2xl font-bold gradient-text">📊 数据可视化</h2>
+      <p class="text-xs md:text-sm text-gray-400 dark:text-gray-500 mt-0.5">洞察你的习惯养成和拖延模式</p>
+    </div>
+
+    <!-- 个性化洞察面板 -->
+    <div id="insights-panel" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+      <div class="rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+        <div class="flex items-center gap-2 mb-2"><i class="fas fa-lightbulb text-amber-500"></i><span class="text-xs font-medium text-gray-500">洞察加载中...</span></div>
+        <p class="text-sm text-gray-400">请选择时间范围查看洞察</p>
+      </div>
     </div>
 
     <!-- 时间范围选择 -->
@@ -38,49 +46,49 @@ async function renderStats() {
     <!-- 图表网格 -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       <!-- 任务完成趋势 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">📈 任务完成趋势</h3>
         <canvas id="taskTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 情绪变化曲线 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">😊 情绪变化曲线</h3>
         <canvas id="emotionTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 习惯养成热力图 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🔥 习惯养成热力图</h3>
         <div id="habitHeatmap" class="w-full"></div>
       </div>
 
       <!-- 拖延模式分析 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🧠 拖延模式分析</h3>
         <canvas id="procrastinationChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 日记趋势 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">📝 日记趋势</h3>
         <canvas id="diaryTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 启动记录 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🚀 微启动记录</h3>
         <canvas id="microStartChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 灵感趋势 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">💡 灵感趋势</h3>
         <canvas id="inspirationTrendChart" style="max-height: 300px;"></canvas>
       </div>
 
       <!-- 番茄钟统计 -->
-      <div class="glass p-6 rounded-2xl">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">🍅 番茄钟统计</h3>
         <canvas id="pomodoroChart" style="max-height: 300px;"></canvas>
       </div>
@@ -88,39 +96,39 @@ async function renderStats() {
 
     <!-- 统计卡片 -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-primary" id="stat-total-tasks">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">总任务数</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-secondary" id="stat-completion-rate">0%</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">完成率</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-accent" id="stat-avg-energy">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">平均精力</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-danger" id="stat-relapse-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">破戒次数</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-indigo-500" id="stat-diary-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">日记数</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-cyan-500" id="stat-micro-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">启动次数</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-yellow-500" id="stat-inspiration-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">灵感数</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-emerald-500" id="stat-commitment-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">承诺总数</p>
       </div>
-      <div class="glass p-6 rounded-2xl text-center">
+      <div class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-6 rounded-2xl text-center">
         <p class="text-3xl font-bold text-amber-500" id="stat-pomodoro-count">0</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">番茄钟</p>
       </div>
@@ -193,11 +201,76 @@ async function loadStats(days = '30') {
     // 更新灵感统计
     var inspirations = inspirationData.entries || [];
     document.getElementById('stat-inspiration-count').textContent = inspirations.length;
+
+    // 计算并显示个性化洞察
+    renderInsights(taskTrend.trend || [], emotionTrend.trend || [], dashboard, heatmap.heatmap || []);
     console.log('[loadStats] 统计数据加载完成');
   } catch (err) {
     console.error('[loadStats] 加载统计数据失败:', err);
     showToast('加载统计数据失败: ' + err.message, 'error');
   }
+}
+
+// ========= 计算并显示个性化洞察 =========
+function renderInsights(taskTrend, emotionTrend, dashboard, heatmap) {
+  const panel = document.getElementById('insights-panel');
+  if (!panel) return;
+
+  let insights = [];
+
+  // 洞察1：完成率趋势（上升/下降/稳定）
+  if (taskTrend.length >= 3) {
+    const recent = taskTrend.slice(-7); // 最近7天
+    const older = taskTrend.slice(-14, -7); // 前7天
+    const recentRate = recent.length > 0 ? recent.reduce((s, d) => s + (d.total > 0 ? d.completed / d.total : 0), 0) / recent.length : 0;
+    const olderRate = older.length > 0 ? older.reduce((s, d) => s + (d.total > 0 ? d.completed / d.total : 0), 0) / older.length : 0;
+    const diff = Math.round((recentRate - olderRate) * 100);
+    let trendText = '', trendIcon = '', trendColor = '';
+    if (diff > 5) { trendText = '上升趋势 📈'; trendIcon = 'fa-arrow-up'; trendColor = 'text-green-500'; }
+    else if (diff < -5) { trendText = '下降趋势 📉'; trendIcon = 'fa-arrow-down'; trendColor = 'text-red-500'; }
+    else { trendText = '保持稳定 ➡️'; trendIcon = 'fa-minus'; trendColor = 'text-gray-500'; }
+    insights.push({ icon: trendIcon, color: trendColor, title: '完成率趋势', desc: trendText + '（最近7天 vs 前7天）' });
+  }
+
+  // 洞察2：最高产的星期几
+  if (taskTrend.length > 0) {
+    const dayMap = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const dayStats = [0, 0, 0, 0, 0, 0, 0];
+    taskTrend.forEach(d => {
+      const day = new Date(d.date).getDay();
+      if (d.completed > 0) dayStats[day] += d.completed;
+    });
+    let maxDay = 0;
+    dayStats.forEach((v, i) => { if (v > dayStats[maxDay]) maxDay = i; });
+    insights.push({ icon: 'fa-calendar-day', color: 'text-indigo-500', title: '最高产日子', desc: dayMap[maxDay] + ' 完成任务最多' });
+  }
+
+  // 洞察3：连续完成任务天数
+  if (taskTrend.length > 0) {
+    let streak = 0;
+    for (let i = taskTrend.length - 1; i >= 0; i--) {
+      if (taskTrend[i].completed > 0) streak++;
+      else break;
+    }
+    insights.push({ icon: 'fa-fire', color: 'text-orange-500', title: '连续完成任务', desc: streak + ' 天（截至最近一天）' });
+  }
+
+  // 洞察4：平均每天完成任务数
+  if (taskTrend.length > 0) {
+    const totalCompleted = taskTrend.reduce((s, d) => s + (d.completed || 0), 0);
+    const avgTasks = (totalCompleted / taskTrend.length).toFixed(1);
+    insights.push({ icon: 'fa-chart-line', color: 'text-cyan-500', title: '日均完成', desc: avgTasks + ' 个任务/天' });
+  }
+
+  // 渲染洞察面板
+  let html = '';
+  insights.forEach(ins => {
+    html += `<div class="rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+      <div class="flex items-center gap-2 mb-1.5"><i class="fas ${ins.icon} ${ins.color}"></i><span class="text-xs font-medium text-gray-500">${ins.title}</span></div>
+      <p class="text-sm text-gray-800 dark:text-white font-medium">${ins.desc}</p>
+    </div>`;
+  });
+  panel.innerHTML = html;
 }
 
 // ========== 任务完成趋势图 ==========

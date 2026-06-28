@@ -341,8 +341,7 @@ const routes = {
   'assistant': function() { return window.renderAssistant.apply(this, arguments); },
   'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
   'settings': renderSettings,
-  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); },
-  'inspiration': function() { return (window.renderInspiration || renderInspiration).apply(this, arguments); }
+  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); }
 };
 
 // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
@@ -469,7 +468,6 @@ function renderNav() {
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
-    { id: 'inspiration', icon: 'fa-lightbulb', label: '灵感' },
   ];
   
   const mobileItems = [
@@ -478,7 +476,6 @@ function renderNav() {
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助' },
-    { id: 'inspiration', icon: 'fa-lightbulb', label: '灵感' },
   ];
   
   const current = state.currentPage;
@@ -3723,17 +3720,6 @@ window._quickSave = async function(type) {
         template_type: 'inspiration',
         is_private: true
       });
-      // 同时保存到本地 localStorage，新灵感页面能实时看到
-      try {
-        var localList = JSON.parse(localStorage.getItem('inspirations') || '[]');
-        localList.unshift({
-          id: Date.now(),
-          text: content,
-          tags: ['快速'],
-          createdAt: new Date().toISOString()
-        });
-        localStorage.setItem('inspirations', JSON.stringify(localList));
-      } catch(e) {}
     }
     showToast('已保存 ✅', 'success');
     document.getElementById('fk-quick-add-overlay')?.remove();

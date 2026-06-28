@@ -1,6 +1,6 @@
 // ========= 创作者工作室 =========
 async function renderCreatorStudio() {
-  const token = safeStorage.get('auth_token');
+  const token = safeStorage.get('token');
   if (!token) { navigate('login'); return ''; }
 
   let scripts = [];

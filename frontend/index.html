@@ -128,15 +128,22 @@
 
   <!-- 加载外部JavaScript文件... -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="diary.js?v=202606282330"></script>
-  <script src="stats.js?v=202606282330"></script>
-  <script src="assistant.js?v=202606282330"></script>
-  <script src="social.js?v=202606282330"></script>
-  <script src="weekly.js?v=202606282330"></script>
-  <script src="fate-killer.js?v=202606282330"></script>
-  <script src="delivery-gap.js?v=202606282330"></script>
-  <script src="creator-studio.js?v=202606282330"></script>
-  <script src="app.js?v=202606282330"></script>
+  <!-- 核心功能（首屏必需） -->
+  <script src="app.js?v=202606282335"></script>
+  <!-- 非核心功能延迟加载（访问时再加载） -->
+  <script>
+    // 预加载：用户空闲时提前加载可能用到的功能
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        ['diary.js', 'weekly.js', 'stats.js'].forEach(file => {
+          var link = document.createElement('link');
+          link.rel = 'prefetch';
+          link.href = file + '?v=202606282335';
+          document.head.appendChild(link);
+        });
+      });
+    }
+  </script>
   
   <!-- PWA更新检测 -->
   <script>

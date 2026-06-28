@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2330
+// 版本：2026-06-28-2335
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -408,21 +408,41 @@ function saveTimerState() {
 // 路由
 const routes = {
   'login': renderLogin, 'dashboard': renderDashboard,
-  'weekly': function() { return (window.renderWeekly || function(){return el('div','<p class="text-center py-12">周视图加载中...</p>');}).apply(this, arguments); },
   'tasks': renderTasks, 'task-detail': renderTaskDetail,
   'micro-start': renderMicroStart,
-  'diary': function() { return (window.renderDiary || renderDiary).apply(this, arguments); },
   'pomodoro': renderPomodoro,
   'emotion': renderEmotion,
-  'stats': function() { return (window.renderStats || renderStats).apply(this, arguments); },
   'commitments': renderCommitments, 'commitment-detail': renderCommitmentDetail,
   'time-blocks': renderTimeBlocks, 'lab': renderLab,
-  'assistant': function() { return window.renderAssistant.apply(this, arguments); },
-  'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
   'settings': renderSettings,
-  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); },
-  'delivery-gap': function() { return (window.renderDeliveryGap || function(){return el('div','<p class="text-center py-12 text-gray-400">间隙利用加载中...</p>');}).apply(this, arguments); }
+  // 延迟加载的功能（按需加载）
+  'weekly': () => loadAndRender('weekly', 'weekly.js', 'renderWeekly'),
+  'diary': () => loadAndRender('diary', 'diary.js', 'renderDiary'),
+  'stats': () => loadAndRender('stats', 'stats.js', 'renderStats'),
+  'assistant': () => loadAndRender('assistant', 'assistant.js', 'renderAssistant'),
+  'fate-killer': () => loadAndRender('fate-killer', 'fate-killer.js', 'renderFateKiller'),
+  'creator-studio': () => loadAndRender('creator-studio', 'creator-studio.js', 'renderCreatorStudio'),
+  'delivery-gap': () => loadAndRender('delivery-gap', 'delivery-gap.js', 'renderDeliveryGap')
 };
+
+// 延迟加载功能模块
+const loadedModules = new Set();
+async function loadAndRender(page, file, funcName) {
+  if (!loadedModules.has(file)) {
+    await new Promise((resolve, reject) => {
+      var script = document.createElement('script');
+      script.src = file + '?v=202606282330';
+      script.onload = () => { loadedModules.add(file); resolve(); };
+      script.onerror = () => reject(new Error('加载 ' + file + ' 失败'));
+      document.head.appendChild(script);
+    });
+  }
+  if (window[funcName]) {
+    return window[funcName]();
+  } else {
+    return el('div', 'text-center py-12 text-gray-400', '功能加载失败，请刷新页面');
+  }
+}
 
 // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
 var _navigateHash = '';
@@ -607,7 +627,7 @@ function renderNav() {
         <span>退出登录</span>
       </button>
       <div class="px-3 py-2 text-center">
-        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2330</span>
+        <span class="text-xs text-gray-400 dark:text-gray-600">v2026.06.28-2335</span>
       </div>
     </div>
   </div>`;

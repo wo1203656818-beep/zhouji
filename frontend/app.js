@@ -467,7 +467,7 @@ function renderNav() {
     { id: 'commitments', icon: 'fa-handshake', label: '承诺' },
     { id: 'time-blocks', icon: 'fa-clock', label: '时间块' },
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
-    { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
+    { id: 'assistant', icon: 'fa-lightbulb', label: '灵感记录' },
   ];
   
   const mobileItems = [
@@ -475,7 +475,7 @@ function renderNav() {
     { id: 'weekly', icon: 'fa-calendar-week', label: '周视图' },
     { id: 'tasks', icon: 'fa-tasks', label: '任务' },
     { id: 'micro-start', icon: 'fa-play', label: '启动' },
-    { id: 'pomodoro', icon: 'fa-stopwatch', label: '番茄' },
+    { id: 'assistant', icon: 'fa-lightbulb', label: '灵感' },
   ];
   
   const current = state.currentPage;

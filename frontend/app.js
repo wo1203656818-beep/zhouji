@@ -3704,7 +3704,7 @@ window._quickAdd = function() {
     '<textarea id="fk-quick-input" placeholder="记下灵感、想法、待办..." style="width:100%;min-height:70px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;outline:none;box-sizing:border-box;margin-bottom:10px;"></textarea>' +
     '<div style="display:flex;gap:6px;">' +
     '<button onclick="window._quickSave(\'inspiration\')" style="flex:1;padding:7px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + icon('lightbulb') + ' 存为灵感</button>' +
-    '<button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding:7px 12px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + '取消' + '</button></div>';
+    '<button onclick="document.getElementById(\'fk-quick-add-overlay\').remove()" style="padding:7px 12px;background:#f3f4f6;color:#374151;border:none;border-radius:8px;font-size:12px;cursor:pointer;">' + '取消' + '</button></div>';
   document.body.appendChild(overlay);
   setTimeout(function() {
     var inp = document.getElementById('fk-quick-input');

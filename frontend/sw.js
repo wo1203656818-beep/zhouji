@@ -69,10 +69,14 @@ self.addEventListener('fetch', (event) => {
         .then(function(response) {
           // 成功：缓存响应
           if (response.ok) {
-            var clone = response.clone();
-            caches.open(API_CACHE).then(function(cache) {
-              cache.put(event.request, clone);
-            });
+            try {
+              var clone = response.clone();
+              caches.open(API_CACHE).then(function(cache) {
+                cache.put(event.request, clone);
+              });
+            } catch (e) {
+              console.warn('[SW] API clone failed:', e.message);
+            }
           }
           return response;
         })
@@ -97,11 +101,14 @@ self.addEventListener('fetch', (event) => {
         // 先返回缓存（如果有）
         var fetchPromise = fetch(event.request).then(function(response) {
           if (response.ok) {
-            // 先 clone 再存缓存，防止 response body 已被读取
-            var responseToCache = response.clone();
-            caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(event.request, responseToCache);
-            });
+            try {
+              var responseToCache = response.clone();
+              caches.open(CACHE_NAME).then(function(cache) {
+                cache.put(event.request, responseToCache);
+              });
+            } catch (e) {
+              console.warn('[SW] versioned clone failed:', e.message);
+            }
           }
           return response;
         }).catch(function() {});
@@ -118,10 +125,14 @@ self.addEventListener('fetch', (event) => {
         // 后台更新缓存
         fetch(event.request).then(function(response) {
           if (response.ok) {
-            var responseClone = response.clone(); // 先 clone 再存缓存
-            caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(event.request, responseClone);
-            });
+            try {
+              var responseClone = response.clone();
+              caches.open(CACHE_NAME).then(function(cache) {
+                cache.put(event.request, responseClone);
+              });
+            } catch (e) {
+              console.warn('[SW] static clone failed:', e.message);
+            }
           }
         }).catch(function() {});
         return cached;
@@ -129,10 +140,14 @@ self.addEventListener('fetch', (event) => {
       // 无缓存：网络请求 + 缓存
       return fetch(event.request).then(function(response) {
         if (response.ok) {
-          var clone = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) {
-            cache.put(event.request, clone);
-          });
+          try {
+            var clone = response.clone();
+            caches.open(CACHE_NAME).then(function(cache) {
+              cache.put(event.request, clone);
+            });
+          } catch (e) {
+            console.warn('[SW] static clone failed:', e.message);
+          }
         }
         return response;
       }).catch(function() {

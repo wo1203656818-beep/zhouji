@@ -1,7 +1,7 @@
 
 // ==================== 周迹前端 v3.0 - 增量改进版 ====================
 // 基于 v2.4 稳定版增量开发
-// 版本：2026-06-28-2245
+// 版本：2026-06-28-2250
 
 
 // ========== 全局变量声明（修复隐式全局问题）==========
@@ -341,7 +341,8 @@ const routes = {
   'assistant': function() { return window.renderAssistant.apply(this, arguments); },
   'fate-killer': function() { return (window.renderFateKiller || function(){ return el('div','<p class="text-center py-12">计划加载中...</p>');}).apply(this, arguments); },
   'settings': renderSettings,
-  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); }
+  'creator-studio': function() { return (window.renderCreatorStudio || function(){return el('div','<p class="text-center py-12 text-gray-400">创作者工作室加载中...</p>');}).apply(this, arguments); },
+  'delivery-gap': function() { return (window.renderDeliveryGap || function(){return el('div','<p class="text-center py-12 text-gray-400">间隙利用加载中...</p>');}).apply(this, arguments); }
 };
 
 // 修复 Bug7: 防止 navigate 和 hashchange 双重触发 render
@@ -469,6 +470,7 @@ function renderNav() {
     { id: 'lab', icon: 'fa-flask', label: '实验室' },
     { id: 'assistant', icon: 'fa-headphones', label: '辅助工具' },
     { id: 'creator-studio', icon: 'fa-video', label: '创作者' },
+    { id: 'delivery-gap', icon: 'fa-motorcycle', label: '间隙利用' },
   ];
   
   const mobileItems = [
